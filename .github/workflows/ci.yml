@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: Syntax and YAML checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Compile Python sources
+        run: python -m py_compile actions/actions.py ui/app.py
+      - name: Validate YAML files
+        run: |
+          pip install pyyaml
+          python - << 'PY'
+          import glob
+          import yaml
+
+          files = (
+              ["domain.yml", "config.yml", "endpoints.yml", "endpoints.docker.yml"]
+              + glob.glob("data/*.yml")
+              + glob.glob("tests/*.yml")
+          )
+          for path in files:
+              with open(path, "r", encoding="utf-8") as handle:
+                  yaml.safe_load(handle)
+              print("OK:", path)
+          PY
+
+  rasa-validate:
+    name: Rasa data validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('requirements.txt') }}
+      - name: Install Rasa
+        run: pip install -r requirements.txt
+      - name: Validate training data and domain
+        run: rasa data validate

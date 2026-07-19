@@ -1,0 +1,105 @@
+version: "3.1"
+
+nlu:
+
+- intent: greet
+  examples: |
+    - hello travel assistant
+    - hey, can you help me?
+    - good morning advisor
+
+- intent: goodbye
+  examples: |
+    - I am done, goodbye
+    - see you next time
+    - thanks, that will be all
+
+- intent: affirm
+  examples: |
+    - yes, keep it
+    - everything is correct
+    - confirm that
+
+- intent: deny
+  examples: |
+    - no, that is incorrect
+    - I want to change that
+    - those details are wrong
+
+- intent: plan_trip
+  examples: |
+    - start a sustainable travel plan
+    - organise an environmentally responsible journey
+    - help me arrange a greener holiday
+
+- intent: provide_trip_details
+  examples: |
+    - I want to travel from [Brussels](origin) to [Copenhagen](destination)
+    - plan my journey from [Madrid](origin) to [Lisbon](destination)
+    - take me from [Vienna](origin) to [Prague](destination)
+
+- intent: provide_origin
+  examples: |
+    - my journey begins in [Oslo](origin)
+    - use [Helsinki](origin) as my starting point
+    - I am leaving from [Stockholm](origin)
+
+- intent: provide_destination
+  examples: |
+    - I would like to arrive in [Athens](destination)
+    - my final destination is [Warsaw](destination)
+    - I am travelling to [Budapest](destination)
+
+- intent: provide_dates
+  examples: |
+    - depart on [2026-08-12](departure_date)
+    - return on [2026-08-19](return_date)
+    - travel from [2026-09-03](departure_date) to [2026-09-09](return_date)
+
+- intent: provide_budget
+  examples: |
+    - I have a budget of [650](budget) euros
+    - keep the total below [1400](budget)
+    - my limit is [950](budget) euros
+
+- intent: provide_sustainability_level
+  examples: |
+    - protecting the environment is extremely important
+    - I want a balanced sustainability level
+    - cost is more important than carbon reduction
+
+- intent: provide_trip_type
+  examples: |
+    - make this a [city break](trip_type)
+    - I am arranging a [countryside eco-tour](trip_type)
+    - the purpose of this journey is [business](trip_type)
+
+- intent: request_recommendations
+  examples: |
+    - display my ranked travel choices
+    - which journey has the lowest emissions?
+    - compare the hotels and transport options
+
+- intent: request_human_advisor
+  examples: |
+    - I would like a travel specialist to take over this request
+    - I need help from a travel expert
+    - let me speak with a human consultant
+
+- intent: change_trip_detail
+  examples: |
+    - edit my [starting city](detail_to_change)
+    - correct the [destination](detail_to_change)
+    - update the [budget](detail_to_change)
+
+- intent: cancel_change
+  examples: |
+    - abandon this change
+    - restore the previous information
+    - go back without saving this edit
+
+- intent: out_of_scope
+  examples: |
+    - write a poem for me
+    - what is the latest football result?
+    - calculate my mortgage payment

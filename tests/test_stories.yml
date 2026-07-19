@@ -1,0 +1,39 @@
+version: "3.1"
+
+stories:
+
+- story: Test greeting
+  steps:
+    - intent: greet
+    - action: utter_greet
+
+- story: Test goodbye
+  steps:
+    - intent: goodbye
+    - action: utter_goodbye
+
+- story: Test trip planning form starts
+  steps:
+    - intent: plan_trip
+    - action: trip_form
+    - active_loop: trip_form
+
+- story: Test direct recommendation request
+  steps:
+    - intent: request_recommendations
+    - action: action_show_recommendations
+
+- story: Test human advisor request
+  steps:
+    - intent: request_human_advisor
+    - action: action_human_handover
+
+- story: Test out-of-scope recovery
+  steps:
+    - intent: out_of_scope
+    - action: action_default_fallback
+
+- story: Test NLU fallback recovery
+  steps:
+    - intent: nlu_fallback
+    - action: action_default_fallback

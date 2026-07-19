@@ -1,0 +1,284 @@
+version: "3.1"
+
+intents:
+  - greet
+  - goodbye
+  - plan_trip
+  - provide_trip_details
+  - provide_trip_type
+  - provide_origin
+  - provide_destination
+  - provide_dates
+  - provide_budget
+  - provide_sustainability_level
+  - select_transport_option
+  - select_hotel_option
+  - confirm_selected_plan
+  - request_recommendations
+  - request_human_advisor
+  - affirm
+  - deny
+  - change_trip_detail
+  - cancel_change
+  - out_of_scope
+
+entities:
+  - origin
+  - destination
+  - departure_date
+  - return_date
+  - budget
+  - sustainability_level
+  - selected_transport_mode
+  - selected_hotel_name
+  - detail_to_change
+  - trip_type
+
+slots:
+  origin:
+    type: text
+    mappings:
+      - type: from_entity
+        entity: origin
+        conditions:
+          - active_loop: trip_form
+            requested_slot: origin
+      - type: from_text
+        conditions:
+          - active_loop: trip_form
+            requested_slot: origin
+
+  destination:
+    type: text
+    mappings:
+      - type: from_entity
+        entity: destination
+        conditions:
+          - active_loop: trip_form
+            requested_slot: destination
+      - type: from_text
+        conditions:
+          - active_loop: trip_form
+            requested_slot: destination
+
+  trip_type:
+    type: categorical
+    values:
+      - city_break
+      - rural_eco_tour
+      - business_trip
+      - general_trip
+    mappings:
+      - type: from_entity
+        entity: trip_type
+        conditions:
+          - active_loop: trip_form
+            requested_slot: trip_type
+      - type: from_text
+        conditions:
+          - active_loop: trip_form
+            requested_slot: trip_type
+
+  departure_date:
+    type: text
+    mappings:
+      - type: from_text
+        conditions:
+          - active_loop: trip_form
+            requested_slot: departure_date
+
+  return_date:
+    type: text
+    mappings:
+      - type: from_text
+        conditions:
+          - active_loop: trip_form
+            requested_slot: return_date
+
+  budget:
+    type: float
+    mappings:
+      - type: from_entity
+        entity: budget
+        conditions:
+          - active_loop: trip_form
+            requested_slot: budget
+      - type: from_text
+        conditions:
+          - active_loop: trip_form
+            requested_slot: budget
+
+  sustainability_level:
+    type: categorical
+    values:
+      - low
+      - medium
+      - high
+    mappings:
+      - type: from_entity
+        entity: sustainability_level
+        conditions:
+          - active_loop: trip_form
+            requested_slot: sustainability_level
+      - type: from_text
+        conditions:
+          - active_loop: trip_form
+            requested_slot: sustainability_level
+
+  selected_transport_mode:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: from_entity
+        entity: selected_transport_mode
+      - type: custom
+
+  selected_hotel_name:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: from_entity
+        entity: selected_hotel_name
+      - type: custom
+
+  pending_city:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: custom
+
+  pending_city_slot:
+    type: categorical
+    values:
+      - origin
+      - destination
+    influence_conversation: false
+    mappings:
+      - type: custom
+
+  editing_trip_detail:
+    type: categorical
+    values:
+      - origin
+      - destination
+      - departure_date
+      - return_date
+      - budget
+      - sustainability_level
+      - trip_type
+      - selected_transport_mode
+      - selected_hotel_name
+    influence_conversation: false
+    mappings:
+      - type: custom
+
+  trip_change_backup:
+    type: any
+    influence_conversation: false
+    mappings:
+      - type: custom
+
+  awaiting_detail_confirmation:
+    type: bool
+    initial_value: false
+    influence_conversation: true
+    mappings:
+      - type: custom
+
+  awaiting_trip_confirmation:
+    type: bool
+    initial_value: false
+    influence_conversation: true
+    mappings:
+      - type: custom
+
+  fallback_count:
+    type: float
+    initial_value: 0
+    influence_conversation: false
+    mappings:
+      - type: custom
+
+  handover_requested:
+    type: bool
+    initial_value: false
+    influence_conversation: false
+    mappings:
+      - type: custom
+
+forms:
+  trip_form:
+    ignored_intents:
+      - cancel_change
+      - select_transport_option
+      - select_hotel_option
+      - confirm_selected_plan
+
+    required_slots:
+      - origin
+      - destination
+      - trip_type
+      - departure_date
+      - return_date
+      - budget
+      - sustainability_level
+
+responses:
+  utter_greet:
+    - text: "Hello! I can help you plan a more sustainable trip."
+
+  utter_goodbye:
+    - text: "Goodbye! Thank you for considering more sustainable travel options."
+
+  utter_ask_trip_type:
+    - text: "What kind of trip are you planning?"
+      buttons:
+        - title: "City break"
+          payload: '/provide_trip_type{"trip_type":"city_break"}'
+        - title: "Rural eco-tour"
+          payload: '/provide_trip_type{"trip_type":"rural_eco_tour"}'
+        - title: "Business trip"
+          payload: '/provide_trip_type{"trip_type":"business_trip"}'
+        - title: "General trip"
+          payload: '/provide_trip_type{"trip_type":"general_trip"}'
+
+  utter_ask_departure_date:
+    - text: "When would you like to depart? Please choose a date from the calendar below."
+
+  utter_ask_return_date:
+    - text: "When would you like to return? Please choose a date from the calendar below."
+
+  utter_ask_budget:
+    - text: "What is your approximate budget in euros?"
+
+  utter_ask_sustainability_level:
+    - text: "How important is reducing environmental impact: low, medium, or high?"
+      buttons:
+        - title: "High"
+          payload: '/provide_sustainability_level{"sustainability_level":"high"}'
+        - title: "Medium"
+          payload: '/provide_sustainability_level{"sustainability_level":"medium"}'
+        - title: "Low"
+          payload: '/provide_sustainability_level{"sustainability_level":"low"}'
+
+actions:
+  - validate_trip_form
+  - action_ask_trip_form_origin
+  - action_ask_trip_form_destination
+  - action_review_trip_details
+  - action_choose_detail_to_change
+  - action_prepare_detail_change
+  - action_finish_detail_change
+  - action_reenter_changed_detail
+  - action_cancel_detail_change
+  - action_reset_trip_details
+  - action_show_recommendations
+  - action_select_transport_option
+  - action_select_hotel_option
+  - action_confirm_selected_plan
+  - action_default_fallback
+  - action_human_handover
+
+session_config:
+  session_expiration_time: 60
+  carry_over_slots_to_new_session: true

@@ -1,0 +1,2 @@
+dateparser<2.0
+requests

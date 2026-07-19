@@ -1,0 +1,10 @@
+rasa==3.6.21
+rasa-sdk==3.6.2
+sqlalchemy<2.0
+websockets==10.4
+spacy<3.5
+dateparser<2.0
+requests
+streamlit
+matplotlib-inline
+psycopg2-binary

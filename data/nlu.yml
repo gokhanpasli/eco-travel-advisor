@@ -1,0 +1,412 @@
+version: "3.1"
+
+nlu:
+
+# --------------------------------------------------
+# BASIC CONVERSATION
+# --------------------------------------------------
+
+- intent: greet
+  examples: |
+    - hello
+    - hi
+    - hey
+    - hi there
+    - hello there
+    - good morning
+    - good afternoon
+    - good evening
+    - greetings
+    - nice to meet you
+    - hello eco travel assistant
+    - hi travel planner
+    - may I ask you something?
+    - could you assist me today?
+
+- intent: goodbye
+  examples: |
+    - goodbye
+    - bye
+    - see you later
+    - thank you, goodbye
+    - I do not need anything else
+    - that will be everything
+    - end this conversation
+    - finish the chat
+    - I am finished with the trip
+    - we can stop here
+    - I will come back later
+    - no more help is needed
+    - thanks, goodbye for now
+    - close this conversation
+
+- intent: affirm
+  examples: |
+    - yes
+    - yes please
+    - correct
+    - that is correct
+    - okay
+    - sure
+    - sounds good
+    - exactly
+    - confirm
+    - confirm all details
+    - accept these details
+    - keep these details
+    - save the updated value
+    - I approve this change
+    - everything looks accurate
+    - continue with the current information
+
+- intent: deny
+  examples: |
+    - no
+    - no thanks
+    - incorrect
+    - that is wrong
+    - not really
+    - I do not want that
+    - these details are not correct
+    - something is wrong
+    - I cannot confirm these details
+    - the information is inaccurate
+    - those details need correction
+    - do not confirm this
+    - this is not what I entered
+    - I disagree with these details
+    - review the information again
+    - the summary contains a mistake
+
+
+# --------------------------------------------------
+# TRIP PLANNING
+# --------------------------------------------------
+
+- intent: plan_trip
+  examples: |
+    - I want to plan an eco-friendly trip
+    - help me plan a sustainable holiday
+    - I need a green travel plan
+    - start planning a low-carbon journey
+    - create a sustainable itinerary for me
+    - help me organise a responsible holiday
+    - begin a new travel plan
+    - I want to arrange an environmentally friendly trip
+    - build a greener travel itinerary
+    - I would like to start a city break plan
+    - can we begin planning my journey?
+    - help me prepare a responsible tourism trip
+    - I need to organise my next holiday
+    - start a new eco travel conversation
+    - I would like to plan my next journey
+    - create a lower-impact travel plan
+
+- intent: provide_trip_details
+  examples: |
+    - I want to travel from [Istanbul](origin) to [Paris](destination)
+    - plan a trip from [Berlin](origin) to [Amsterdam](destination)
+    - I want to go from [London](origin) to [Rome](destination)
+    - my route is from [Paris](origin) to [Barcelona](destination)
+    - I am travelling from [Istanbul](origin) to [Amsterdam](destination) with a budget of [700](budget) euros
+    - I want to travel from [London](origin) to [Paris](destination) on [2026-07-10](departure_date)
+    - the journey begins in [Berlin](origin) and ends in [Barcelona](destination)
+    - arrange transport from [Rome](origin) to [Paris](destination)
+    - my starting point is [Madrid](origin) and my destination is [Lisbon](destination)
+    - I will depart from [Vienna](origin) and arrive in [Prague](destination)
+    - my complete route is [Amsterdam](origin) to [Copenhagen](destination)
+    - I need to get from [Milan](origin) to [Zurich](destination)
+    - organise a journey between [Brussels](origin) and [Dublin](destination)
+    - take me from [Oslo](origin) to [Stockholm](destination)
+    - I am going from [Helsinki](origin) to [Warsaw](destination)
+    - plan the route from [Athens](origin) to [Budapest](destination)
+
+
+# --------------------------------------------------
+# ORIGIN AND DESTINATION
+# --------------------------------------------------
+
+- intent: provide_origin
+  examples: |
+    - I am travelling from [Istanbul](origin)
+    - my departure city is [Berlin](origin)
+    - I will leave from [London](origin)
+    - I am starting my journey in [Rome](origin)
+    - my trip starts in [Paris](origin)
+    - I am departing from [Amsterdam](origin)
+    - my origin city is [Barcelona](origin)
+    - I will begin in [Madrid](origin)
+    - the journey begins in [Vienna](origin)
+    - my starting point is [Prague](origin)
+    - I am currently located in [Lisbon](origin)
+    - use [Copenhagen](origin) as the starting city
+    - I am based in [Dublin](origin)
+    - set [Oslo](origin) as my origin
+    - my journey should start from [Stockholm](origin)
+    - the departure location is [Helsinki](origin)
+
+- intent: provide_destination
+  examples: |
+    - I want to visit [Paris](destination)
+    - my destination is [Amsterdam](destination)
+    - I would like to travel to [Berlin](destination)
+    - the arrival city is [Rome](destination)
+    - I want to go to [Barcelona](destination)
+    - I am heading towards [Lisbon](destination)
+    - set the destination to [Copenhagen](destination)
+    - I would like to arrive in [Vienna](destination)
+    - my trip should finish in [Zurich](destination)
+    - the city I want to visit is [Prague](destination)
+    - use [Madrid](destination) as my destination
+    - I would like [Milan](destination) as the arrival city
+    - the final stop should be [Amsterdam](destination)
+    - my journey ends in [Stockholm](destination)
+    - I am travelling towards [Athens](destination)
+    - set [Budapest](destination) as the final city
+
+
+# --------------------------------------------------
+# TRAVEL DATES
+# --------------------------------------------------
+
+- intent: provide_dates
+  examples: |
+    - I want to depart on [2026-07-10](departure_date)
+    - my departure date is [2026-08-01](departure_date)
+    - I will leave on [2026-09-15](departure_date)
+    - the journey starts on [2026-10-05](departure_date)
+    - book the departure for [2026-11-12](departure_date)
+    - I plan to travel on [2027-01-20](departure_date)
+    - set [2026-12-03](departure_date) as my departure
+    - my outbound journey is on [2027-02-14](departure_date)
+    - my return date is [2026-07-15](return_date)
+    - I will return on [2026-08-08](return_date)
+    - I am coming back on [2026-09-22](return_date)
+    - the return journey is on [2026-10-12](return_date)
+    - set my return for [2026-11-19](return_date)
+    - I will come home on [2027-01-27](return_date)
+    - I want to travel from [2026-07-10](departure_date) to [2026-07-15](return_date)
+    - depart on [2026-08-01](departure_date) and return on [2026-08-08](return_date)
+    - leaving on [2026-09-15](departure_date) and coming back on [2026-09-22](return_date)
+    - my journey runs from [2026-10-05](departure_date) until [2026-10-12](return_date)
+
+
+# --------------------------------------------------
+# BUDGET
+# --------------------------------------------------
+
+- intent: provide_budget
+  examples: |
+    - my budget is [500](budget) euros
+    - I can spend up to [1000](budget) euros
+    - my maximum budget is [750](budget)
+    - I have around [400](budget) euros
+    - I have [1200](budget) euros available
+    - the total budget is [700](budget) euros
+    - I would like to stay under [600](budget) euros
+    - I can afford approximately [900](budget) euros
+    - please keep the trip below [1500](budget) euros
+    - my spending limit is [800](budget)
+    - I want the journey to cost about [1100](budget) euros
+    - I only want to spend [350](budget) euros
+    - set my travel budget to [950](budget) euros
+    - I have allocated [1300](budget) euros
+    - the most I can pay is [550](budget) euros
+    - use [2000](budget) euros as my budget
+
+
+
+# --------------------------------------------------
+# SUSTAINABILITY PREFERENCE
+# --------------------------------------------------
+
+- intent: provide_sustainability_level
+  examples: |
+    - set my sustainability preference to [high](sustainability_level)
+    - reducing emissions is a [high](sustainability_level) priority for me
+    - my environmental priority is [high](sustainability_level)
+    - choose the [high](sustainability_level) sustainability setting
+    - carbon reduction matters a lot to me
+    - environmental impact is my main concern
+    - set my sustainability preference to [medium](sustainability_level)
+    - my sustainability priority is [medium](sustainability_level)
+    - choose a [medium](sustainability_level) level
+    - I want a balance between price and emissions
+    - environmental impact and price are equally important
+    - use the balanced sustainability setting
+    - set my sustainability preference to [low](sustainability_level)
+    - my sustainability priority is [low](sustainability_level)
+    - choose the [low](sustainability_level) level
+    - affordability is more important to me
+    - price is my main priority
+    - focus more on cost than carbon impact
+
+
+- intent: provide_trip_type
+  examples: |
+    - I am planning a [city break](trip_type)
+    - this is a [short city trip](trip_type)
+    - I want a [weekend city break](trip_type)
+    - choose [city break](trip_type)
+    - I am planning a [rural eco-tour](trip_type)
+    - this is a [nature-focused trip](trip_type)
+    - I want a [countryside eco-tour](trip_type)
+    - choose [rural eco-tour](trip_type)
+    - I am planning a [business trip](trip_type)
+    - this journey is for [business](trip_type)
+    - I need a [lower-carbon business trip](trip_type)
+    - choose [business trip](trip_type)
+    - I am planning a [general leisure trip](trip_type)
+    - this is a [regular holiday](trip_type)
+    - I have no specific trip type
+    - choose [general trip](trip_type)
+
+
+- intent: select_transport_option
+  examples: |
+    - choose [Train](selected_transport_mode)
+    - choose [Bus](selected_transport_mode)
+    - choose [Car](selected_transport_mode)
+    - choose [Flight](selected_transport_mode)
+    - I choose [Train](selected_transport_mode)
+    - I choose [Bus](selected_transport_mode)
+    - I want the [Train](selected_transport_mode) plan
+    - I want the [Bus](selected_transport_mode) plan
+    - select [Car](selected_transport_mode)
+    - select [Flight](selected_transport_mode)
+    - book the [Train](selected_transport_mode) option
+    - continue with [Bus](selected_transport_mode)
+    - choose train plan
+    - choose bus plan
+    - choose car plan
+    - choose flight plan
+
+
+- intent: select_hotel_option
+  examples: |
+    - select this hotel
+    - choose this hotel
+    - choose this accommodation
+    - use this hotel
+    - use this accommodation
+
+
+- intent: confirm_selected_plan
+  examples: |
+    - confirm selected plan
+    - confirm this plan
+    - save this plan
+    - keep this selected plan
+    - this plan looks good
+
+# --------------------------------------------------
+# RECOMMENDATIONS AND HUMAN SUPPORT
+# --------------------------------------------------
+
+- intent: request_recommendations
+  examples: |
+    - show me my travel recommendations
+    - display the available travel options
+    - compare the transport choices
+    - show the ranked results
+    - present the hotel and transport results
+    - which available route produces less carbon?
+    - compare the carbon values of the options
+    - show the most suitable choices
+    - display the recommendation list
+    - rank the available transport modes
+    - show lower-emission alternatives
+    - compare the prices and emissions
+    - what options have you found for this trip?
+    - show the results for my journey
+    - present the recommended hotels
+    - which of the available choices has the lowest impact?
+
+- intent: request_human_advisor
+  examples: |
+    - I want to speak with a human advisor
+    - connect me to a travel specialist
+    - I need personalised help from a person
+    - can I talk to a human consultant?
+    - transfer this conversation to an advisor
+    - I need expert help from a travel professional
+    - this itinerary is complex and I need an advisor
+    - I want support from a real person
+    - please connect me with a human agent
+    - I need help from a travel consultant
+    - let me speak to a travel expert
+    - a human should review this itinerary
+    - escalate this request to an advisor
+    - arrange a consultation with a specialist
+    - I need a person to help with this journey
+    - hand this conversation over to a human
+
+
+# --------------------------------------------------
+# CHANGE MANAGEMENT
+# --------------------------------------------------
+
+- intent: change_trip_detail
+  examples: |
+    - change the [starting city](detail_to_change)
+    - update my [origin](detail_to_change)
+    - modify the [destination](detail_to_change)
+    - update my [departure date](detail_to_change)
+    - change the [return date](detail_to_change)
+    - revise my [budget](detail_to_change)
+    - change the [sustainability preference](detail_to_change)
+    - I want to edit the [budget](detail_to_change)
+    - let me modify the [destination](detail_to_change)
+    - correct my [travel dates](detail_to_change)
+    - choose a different [starting city](detail_to_change)
+    - I need to revise the [return date](detail_to_change)
+    - edit the [sustainability level](detail_to_change)
+    - replace the [departure date](detail_to_change)
+    - select another [destination](detail_to_change)
+    - modify one of my trip details
+    - change the [trip type](detail_to_change)
+    - update my [travel purpose](detail_to_change)
+    - choose a different [travel scenario](detail_to_change)
+
+- intent: cancel_change
+  examples: |
+    - cancel this edit
+    - discard the current change
+    - stop changing this detail
+    - keep the previous value
+    - do not save the new value
+    - return to the review without saving
+    - leave this information unchanged
+    - forget this modification
+    - undo the current edit
+    - exit the editing process
+    - keep the original trip information
+    - cancel the detail update
+    - go back to the existing details
+    - discard my latest edit
+    - stop editing and keep the old value
+    - return without applying this change
+
+
+# --------------------------------------------------
+# OUT OF SCOPE
+# --------------------------------------------------
+
+- intent: out_of_scope
+  examples: |
+    - asdfghxyz
+    - qwertyuiop
+    - random meaningless text
+    - I want to order a pizza
+    - tell me a joke
+    - give me a football result
+    - play a song for me
+    - help me access my bank account
+    - this question is unrelated to travelling
+    - I need help repairing my computer
+    - calculate a mathematics equation
+    - give me medical advice
+    - write an essay for me
+    - what is the current stock price?
+    - book a restaurant table
+    - help me buy a new phone

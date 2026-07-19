@@ -1,0 +1,33 @@
+services:
+  action-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.actions
+    env_file: .env
+    ports:
+      - "5055:5055"
+
+  rasa:
+    image: rasa/rasa:3.6.21-full
+    volumes:
+      - .:/app
+    command: >
+      run --enable-api --cors "*"
+      --endpoints endpoints.docker.yml
+      --port 5005
+    ports:
+      - "5005:5005"
+    depends_on:
+      - action-server
+
+  ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ui
+    env_file: .env
+    environment:
+      RASA_BASE_URL: http://rasa:5005
+    ports:
+      - "8501:8501"
+    depends_on:
+      - rasa

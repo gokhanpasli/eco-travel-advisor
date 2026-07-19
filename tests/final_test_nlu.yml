@@ -1,0 +1,122 @@
+version: "3.1"
+
+nlu:
+
+- intent: greet
+  examples: |
+    - hello, is anyone available?
+    - greetings travel assistant
+    - hi, I have a travel question
+    - good day to you
+
+- intent: goodbye
+  examples: |
+    - end our conversation please
+    - I have everything I need now
+    - we are finished here
+    - goodbye until next time
+
+- intent: affirm
+  examples: |
+    - approve the information
+    - proceed with those values
+    - all of that is accurate
+    - save and continue
+
+- intent: deny
+  examples: |
+    - the summary is not accurate
+    - I cannot approve these details
+    - something in that information is incorrect
+    - do not proceed with those values
+
+- intent: plan_trip
+  examples: |
+    - prepare an environmentally responsible journey
+    - I would like to begin arranging a holiday
+    - create a lower-impact itinerary
+    - let us start planning my vacation
+
+- intent: provide_trip_details
+  examples: |
+    - my route will be from [Dublin](origin) to [Vienna](destination)
+    - arrange travel between [Warsaw](origin) and [Rome](destination)
+    - I am going from [Lisbon](origin) to [Brussels](destination)
+    - the journey starts in [Copenhagen](origin) and finishes in [Milan](destination)
+
+- intent: provide_origin
+  examples: |
+    - set [Athens](origin) as where I leave from
+    - the journey will begin in [Budapest](origin)
+    - use [Zurich](origin) for my departure location
+    - I am setting off from [Stockholm](origin)
+
+- intent: provide_destination
+  examples: |
+    - make [Helsinki](destination) my arrival location
+    - I would like the journey to finish in [Madrid](destination)
+    - set my final city to [Oslo](destination)
+    - I am planning to arrive in [Prague](destination)
+
+- intent: provide_dates
+  examples: |
+    - set the outbound date to [2026-12-08](departure_date)
+    - I will travel back on [2026-12-16](return_date)
+    - leave on [2027-03-04](departure_date) and return on [2027-03-11](return_date)
+    - my journey is from [2027-04-09](departure_date) until [2027-04-14](return_date)
+
+- intent: provide_budget
+  examples: |
+    - allocate [680](budget) euros for the journey
+    - my total spending allowance is [1250](budget)
+    - I cannot spend more than [840](budget) euros
+    - use [1750](budget) as the cost limit
+
+- intent: provide_sustainability_level
+  examples: |
+    - protecting the climate is my highest priority
+    - use the middle environmental preference
+    - I care equally about cost and emissions
+    - keeping the price low matters more to me
+
+- intent: provide_trip_type
+  examples: |
+    - use the [city break](trip_type) scenario
+    - plan this as a [nature-focused trip](trip_type)
+    - this will be a [business journey](trip_type)
+    - choose a [general trip](trip_type) for me
+
+- intent: request_recommendations
+  examples: |
+    - present the choices calculated for my trip
+    - compare the available journey results
+    - show which transport choice performs best
+    - display the accommodation and travel suggestions
+
+- intent: request_human_advisor
+  examples: |
+    - escalate my conversation to a travel professional
+    - I need this itinerary reviewed by a person
+    - arrange human assistance for my journey
+    - connect me with someone from the advisory team
+
+- intent: change_trip_detail
+  examples: |
+    - revise the [starting location](detail_to_change)
+    - select another [arrival city](detail_to_change)
+    - modify my [outbound date](detail_to_change)
+    - edit the [environmental priority](detail_to_change)
+
+- intent: cancel_change
+  examples: |
+    - abandon the edit and retain the old information
+    - leave the original value as it was
+    - exit without applying my modification
+    - ignore the new value and return to the review
+
+- intent: out_of_scope
+  examples: |
+    - diagnose a problem with my laptop
+    - explain how to invest in cryptocurrency
+    - compose a birthday poem
+    - help me choose a television
