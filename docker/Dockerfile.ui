@@ -6,6 +6,7 @@ COPY requirements-ui.txt .
 RUN pip install --no-cache-dir -r requirements-ui.txt
 
 COPY ui/app.py .
+COPY .streamlit/ .streamlit/
 
 EXPOSE 8501
 
