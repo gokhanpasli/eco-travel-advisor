@@ -1081,6 +1081,49 @@ div[class*="st-key-transport_card_"] {
     color: var(--text);
 }
 
+/* Sidebar structure helpers */
+.sidebar-gap {
+    height: 6px;
+}
+
+.sidebar-section-label {
+    margin: 22px 0 6px;
+    padding-left: 2px;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 850;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+}
+
+.sidebar-footnote {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.74rem;
+    line-height: 1.5;
+}
+
+/* Subtle, full-width Log out button under the user card */
+[data-testid="stSidebar"]
+div[class*="st-key-sidebar_logout_small"] .stButton > button,
+div[class*="st-key-sidebar_logout_small"] .stButton > button {
+    min-height: 38px !important;
+    background: transparent !important;
+    border: 1px solid var(--border) !important;
+    color: var(--muted) !important;
+    font-weight: 700 !important;
+    box-shadow: none !important;
+}
+
+div[class*="st-key-sidebar_logout_small"] .stButton > button:hover {
+    border-color: rgba(220, 38, 38, 0.45) !important;
+    background: rgba(220, 38, 38, 0.06) !important;
+    color: var(--danger) !important;
+    transform: none !important;
+}
+
 /* Live trip summary rail, pinned in the right margin */
 .trip-rail {
     position: fixed;
@@ -1985,19 +2028,28 @@ def render_user_panel():
     </div>
     """)
 
-    logout_left, logout_right = st.columns([1.1, 1.9])
+    if st.button(
+        "Log out",
+        key="sidebar_logout_small",
+        use_container_width=True,
+    ):
+        clear_login_session()
+        delete_auth_cookie()
+        st.stop()
 
-    with logout_left:
-        if st.button(
-            "Log out",
-            key="sidebar_logout_small",
-            type="primary",
-        ):
-            clear_login_session()
-            delete_auth_cookie()
-            st.stop()
+    st.html('<div class="sidebar-gap"></div>')
 
-    st.divider()
+    if st.button(
+        "＋  Plan a new trip",
+        key="sidebar_new_trip",
+        type="primary",
+        use_container_width=True,
+        help="Clear the current conversation and start a fresh plan.",
+    ):
+        reset_chat()
+        st.rerun()
+
+    st.html('<div class="sidebar-section-label">Your account</div>')
 
     with st.expander(
         "My trips",
@@ -6121,57 +6173,43 @@ def render_trip_summary_rail():
 with st.sidebar:
     render_user_panel()
 
-    st.divider()
-    st.subheader("Project Overview")
+    st.html('<div class="sidebar-section-label">Good to know</div>')
 
     with st.expander(
-    "How it works",
-    expanded=False,
-    ):
-        st.markdown("""
-    - Quick replies are generated from Rasa buttons.
-    - Carbon levels are shown with green, amber, and red labels.
-    - The simulated advisor handover includes conversation context.
-    """)
-
-    st.divider()
-
-    with st.expander(
-        "Privacy and accessibility",
+        "How it works",
         expanded=False,
     ):
         st.markdown("""
-**Data use**
+1. **Tell me your route and dates** — where you're starting, where you're headed, and when.
+2. **I compare your options** — train, bus, car and flight, ranked by price, travel time and carbon footprint.
+3. **Pick a plan** — then I suggest eco-friendly stays and things to do at your destination.
 
-- Only trip details needed for planning are requested.
-- Do not enter passport, payment, health, or other sensitive data.
-- A simulated advisor handover may be prepared when requested by the user or after repeated misunderstandings.
-- No real advisor receives data in this prototype.
-- External APIs should receive only the minimum required trip values.
+Carbon levels are shown as **green**, **amber** or **red** so you can weigh cost against climate impact at a glance.
+""")
 
-**Data retention**
+    with st.expander(
+        "Privacy & accessibility",
+        expanded=False,
+    ):
+        st.markdown("""
+**Your data**
 
-- Reset Chat starts a new pseudonymous conversation.
-- The visible conversation is cleared.
-- Prototype data may remain temporarily in Colab memory until the runtime ends.
+- Only the trip details needed for planning are ever requested.
+- Please don't enter passport, payment, health or other sensitive data.
+- "Plan a new trip" clears the current conversation and starts fresh.
 
 **Accessibility**
 
-- Controls support keyboard navigation.
-- Messages and result sections include screen-reader labels.
-- Carbon information is communicated with text as well as colour.
+- Every control works with the keyboard.
+- Messages and results carry screen-reader labels.
+- Carbon information is shown as text as well as colour, so it never relies on colour alone.
 """)
 
-    if st.button(
-        "Reset Chat",
-        use_container_width=True,
-        help=(
-            "Clear the visible conversation and begin "
-            "a new pseudonymous session."
-        ),
-    ):
-        reset_chat()
-        st.rerun()
+    st.html(
+        '<div class="sidebar-footnote">'
+        "🌿 Eco-Travel Advisor · lower-impact trips across Europe"
+        "</div>"
+    )
 
 
 render_brand_header(
