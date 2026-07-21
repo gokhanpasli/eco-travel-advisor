@@ -1081,6 +1081,173 @@ div[class*="st-key-transport_card_"] {
     color: var(--text);
 }
 
+/* Live trip summary rail, pinned in the right margin */
+.trip-rail {
+    position: fixed;
+    top: 96px;
+    right: 24px;
+    width: 300px;
+    max-height: calc(100vh - 128px);
+    overflow-y: auto;
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background:
+        linear-gradient(
+            160deg,
+            #ffffff,
+            #f2fbf5 60%,
+            #eaf7ee 100%
+        );
+    box-shadow: 0 18px 40px rgba(31, 63, 45, 0.10);
+    z-index: 30;
+}
+
+.trip-rail-eyebrow {
+    color: var(--brand);
+    font-size: 0.66rem;
+    font-weight: 900;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+}
+
+.trip-rail-title {
+    margin: 3px 0 16px;
+    color: var(--text);
+    font-size: 1.15rem;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+}
+
+.trip-rail-route {
+    display: grid;
+    grid-template-columns: 26px 1fr;
+    gap: 4px 12px;
+    margin-bottom: 6px;
+}
+
+.trip-rail-pin {
+    display: grid;
+    place-items: center;
+    font-size: 1.05rem;
+    line-height: 1;
+}
+
+.trip-rail-connector {
+    display: grid;
+    place-items: center;
+}
+
+.trip-rail-connector span {
+    width: 2px;
+    height: 20px;
+    border-radius: 2px;
+    background:
+        repeating-linear-gradient(
+            180deg,
+            rgba(22, 163, 74, 0.55) 0 4px,
+            transparent 4px 8px
+        );
+}
+
+.trip-rail-endpoint-label {
+    color: var(--muted);
+    font-size: 0.62rem;
+    font-weight: 850;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.trip-rail-endpoint-value {
+    color: var(--text);
+    font-size: 1.02rem;
+    font-weight: 850;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.trip-rail-endpoint-value.pending {
+    color: #9fb3a6;
+    font-weight: 750;
+}
+
+.trip-rail-divider {
+    height: 1px;
+    margin: 16px 0;
+    background: var(--border);
+}
+
+.trip-rail-facts {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.trip-rail-fact {
+    display: grid;
+    grid-template-columns: 30px 1fr;
+    align-items: center;
+    gap: 12px;
+}
+
+.trip-rail-fact-icon {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    background: var(--brand-soft);
+    font-size: 0.95rem;
+}
+
+.trip-rail-fact-label {
+    color: var(--muted);
+    font-size: 0.62rem;
+    font-weight: 850;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.trip-rail-fact-value {
+    color: var(--text);
+    font-size: 0.92rem;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.trip-rail-fact-value.pending {
+    color: #9fb3a6;
+    font-weight: 700;
+}
+
+.trip-rail-foot {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--border-strong);
+    color: var(--muted);
+    font-size: 0.72rem;
+    line-height: 1.5;
+}
+
+/* Hide the rail when the viewport is too narrow to hold it beside the chat */
+@media (max-width: 1500px) {
+    .trip-rail {
+        display: none;
+    }
+}
+
+/* Keep the main content clear of the rail on wide screens */
+@media (min-width: 1501px) {
+    [data-testid="stMainBlockContainer"],
+    .block-container {
+        padding-right: 360px !important;
+    }
+
+    [data-testid="stBottomBlockContainer"] {
+        padding-right: 340px !important;
+    }
+}
+
 </style>
 """)
 
@@ -2338,6 +2505,47 @@ def tracker_departure_date():
         TypeError,
         ValueError,
     ):
+        return None
+
+
+def fetch_trip_slots():
+    """Read the current trip slots from the Rasa tracker.
+
+    Returns a dict of the planning slots, or an empty dict when the
+    tracker cannot be reached so the summary rail degrades gracefully.
+    """
+    url = (
+        f"{RASA_BASE_URL}/conversations/"
+        f"{st.session_state.sender_id}/tracker"
+    )
+
+    try:
+        response = requests.get(url, timeout=3)
+        response.raise_for_status()
+        slots = response.json().get("slots", {}) or {}
+
+    except (requests.exceptions.RequestException, ValueError):
+        return {}
+
+    keys = (
+        "origin",
+        "destination",
+        "trip_type",
+        "departure_date",
+        "return_date",
+        "budget",
+        "sustainability_level",
+        "selected_transport_mode",
+        "selected_hotel_name",
+    )
+
+    return {key: slots.get(key) for key in keys}
+
+
+def format_summary_date(value):
+    try:
+        return date.fromisoformat(str(value)).strftime("%d %b %Y")
+    except (TypeError, ValueError):
         return None
 
 def render_date_picker():
@@ -5797,6 +6005,119 @@ def render_trip_progress():
     </div>
     """)
 
+def render_trip_summary_rail():
+    slots = fetch_trip_slots()
+
+    origin = str(slots.get("origin") or "").strip()
+    destination = str(slots.get("destination") or "").strip()
+    trip_type = str(slots.get("trip_type") or "").strip()
+    depart = format_summary_date(slots.get("departure_date"))
+    return_on = format_summary_date(slots.get("return_date"))
+    budget_raw = slots.get("budget")
+    priority = str(slots.get("sustainability_level") or "").strip()
+    transport = str(slots.get("selected_transport_mode") or "").strip()
+    hotel = str(slots.get("selected_hotel_name") or "").strip()
+
+    try:
+        budget = f"€{float(budget_raw):.0f}" if budget_raw else ""
+    except (TypeError, ValueError):
+        budget = ""
+
+    def endpoint(label, city):
+        pending = not city
+        flag = city_flag(city) if city else "○"
+        value = html.escape(city) if city else "Not set yet"
+        css = "pending" if pending else ""
+        return flag, label, value, css
+
+    origin_flag, _, origin_value, origin_css = endpoint("From", origin)
+    dest_flag, _, dest_value, dest_css = endpoint("To", destination)
+
+    dates_value = "Not set yet"
+    dates_pending = "pending"
+    if depart and return_on:
+        dates_value = f"{html.escape(depart)} &rarr; {html.escape(return_on)}"
+        dates_pending = ""
+    elif depart:
+        dates_value = html.escape(depart)
+        dates_pending = ""
+
+    def fact(icon, label, value):
+        pending = not value
+        shown = value if value else "Not set yet"
+        css = "pending" if pending else ""
+        return f"""
+        <div class="trip-rail-fact">
+            <div class="trip-rail-fact-icon" aria-hidden="true">{icon}</div>
+            <div>
+                <div class="trip-rail-fact-label">{label}</div>
+                <div class="trip-rail-fact-value {css}">{shown}</div>
+            </div>
+        </div>
+        """
+
+    facts = [
+        f"""
+        <div class="trip-rail-fact">
+            <div class="trip-rail-fact-icon" aria-hidden="true">📅</div>
+            <div>
+                <div class="trip-rail-fact-label">Dates</div>
+                <div class="trip-rail-fact-value {dates_pending}">{dates_value}</div>
+            </div>
+        </div>
+        """,
+        fact("🧭", "Trip type", html.escape(trip_type.title()) if trip_type else ""),
+        fact("💰", "Budget", html.escape(budget)),
+        fact("🌿", "Sustainability", html.escape(priority.title()) if priority else ""),
+    ]
+
+    if transport:
+        facts.append(
+            fact(
+                transport_icon(transport),
+                "Transport",
+                html.escape(transport.title()),
+            )
+        )
+
+    if hotel:
+        facts.append(fact("🏨", "Stay", html.escape(hotel)))
+
+    st.html(f"""
+<aside class="trip-rail" aria-label="Trip summary so far">
+    <div class="trip-rail-eyebrow">Your trip</div>
+    <div class="trip-rail-title">Plan so far</div>
+
+    <div class="trip-rail-route">
+        <div class="trip-rail-pin" aria-hidden="true">{origin_flag}</div>
+        <div>
+            <div class="trip-rail-endpoint-label">From</div>
+            <div class="trip-rail-endpoint-value {origin_css}">{origin_value}</div>
+        </div>
+
+        <div class="trip-rail-connector" aria-hidden="true"><span></span></div>
+        <div></div>
+
+        <div class="trip-rail-pin" aria-hidden="true">{dest_flag}</div>
+        <div>
+            <div class="trip-rail-endpoint-label">To</div>
+            <div class="trip-rail-endpoint-value {dest_css}">{dest_value}</div>
+        </div>
+    </div>
+
+    <div class="trip-rail-divider"></div>
+
+    <div class="trip-rail-facts">
+        {"".join(facts)}
+    </div>
+
+    <div class="trip-rail-foot">
+        Fills in as you answer. Prices and carbon are estimates.
+    </div>
+</aside>
+""")
+
+
 with st.sidebar:
     render_user_panel()
 
@@ -5867,6 +6188,8 @@ st.html("""
 """)
 
 render_trip_progress()
+
+render_trip_summary_rail()
 
 for message_index, message in enumerate(
     st.session_state.messages
