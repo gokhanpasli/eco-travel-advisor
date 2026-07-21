@@ -2812,8 +2812,8 @@ def get_change_backup(tracker):
 
     return backup if isinstance(backup, dict) else {}
 
-def detail_change_buttons():
-    return [
+def detail_change_buttons(tracker: Tracker = None):
+    buttons = [
         {
             "title": "Starting city",
             "payload": (
@@ -2863,27 +2863,40 @@ def detail_change_buttons():
                 '{"detail_to_change":"sustainability_level"}'
             ),
         },
+    ]
 
-        {
-            "title": "Transport",
-            "payload": (
-                '/change_trip_detail'
-                '{"detail_to_change":"selected_transport_mode"}'
-            ),
-        },
-        {
-            "title": "Hotel",
-            "payload": (
-                '/change_trip_detail'
-                '{"detail_to_change":"selected_hotel_name"}'
-            ),
-        },
+    # Transport and hotel can only be changed once they have been
+    # selected, so only offer them after those steps are reached.
+    if tracker is not None and tracker.get_slot("selected_transport_mode"):
+        buttons.append(
+            {
+                "title": "Transport",
+                "payload": (
+                    '/change_trip_detail'
+                    '{"detail_to_change":"selected_transport_mode"}'
+                ),
+            }
+        )
 
+    if tracker is not None and tracker.get_slot("selected_hotel_name"):
+        buttons.append(
+            {
+                "title": "Hotel",
+                "payload": (
+                    '/change_trip_detail'
+                    '{"detail_to_change":"selected_hotel_name"}'
+                ),
+            }
+        )
+
+    buttons.append(
         {
             "title": "Cancel change",
             "payload": "/cancel_change",
-        },
-    ]
+        }
+    )
+
+    return buttons
 
 def readable_detail_value(
     detail_name: str,
@@ -2915,7 +2928,7 @@ class ActionChooseDetailToChange(Action):
 
         dispatcher.utter_message(
             text="Which trip detail would you like to change?",
-            buttons=detail_change_buttons(),
+            buttons=detail_change_buttons(tracker),
         )
 
         return [
@@ -2960,7 +2973,7 @@ class ActionPrepareDetailChange(Action):
                 text=(
                     "Which trip detail would you like to change?"
                 ),
-                buttons=detail_change_buttons(),
+                buttons=detail_change_buttons(tracker),
             )
 
             return [FollowupAction("action_listen")]
@@ -3207,7 +3220,7 @@ class ActionReenterChangedDetail(Action):
         if detail_name not in DETAIL_LABELS:
             dispatcher.utter_message(
                 text="Please choose the detail again.",
-                buttons=detail_change_buttons(),
+                buttons=detail_change_buttons(tracker),
             )
 
             return [

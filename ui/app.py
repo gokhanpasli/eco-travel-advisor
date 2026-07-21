@@ -2600,6 +2600,13 @@ def format_summary_date(value):
     except (TypeError, ValueError):
         return None
 
+
+def humanize_slot(value):
+    """Turn a raw slot value like 'rural_eco_tour' into 'Rural Eco Tour'."""
+    text = str(value or "").strip().replace("_", " ").replace("-", " ")
+    text = re.sub(r"\s+", " ", text)
+    return text.title()
+
 def render_date_picker():
     requested = latest_requested_date_type()
 
@@ -6118,9 +6125,9 @@ def render_trip_summary_rail():
             </div>
         </div>
         """,
-        fact("🧭", "Trip type", html.escape(trip_type.title()) if trip_type else ""),
+        fact("🧭", "Trip type", html.escape(humanize_slot(trip_type)) if trip_type else ""),
         fact("💰", "Budget", html.escape(budget)),
-        fact("🌿", "Sustainability", html.escape(priority.title()) if priority else ""),
+        fact("🌿", "Sustainability", html.escape(humanize_slot(priority)) if priority else ""),
     ]
 
     if transport:
@@ -6128,7 +6135,7 @@ def render_trip_summary_rail():
             fact(
                 transport_icon(transport),
                 "Transport",
-                html.escape(transport.title()),
+                html.escape(humanize_slot(transport)),
             )
         )
 
@@ -6397,26 +6404,51 @@ components.html(
     """
 <script>
 (function () {
-    function scrollToLatestResponse() {
-        const parentDocument = window.parent.document;
+    const parentDocument = window.parent.document;
 
-        const target = parentDocument.getElementById(
-            "latest-response-anchor"
-        );
+    function mainScrollContainer() {
+        const candidates = [
+            'section[data-testid="stMain"]',
+            '[data-testid="stAppViewContainer"] section.main',
+            'section.main',
+        ];
 
-        if (!target) {
-            return;
+        for (const selector of candidates) {
+            const el = parentDocument.querySelector(selector);
+            if (el && el.scrollHeight > el.clientHeight + 4) {
+                return el;
+            }
         }
 
-        target.scrollIntoView({
-            behavior: "smooth",
-            block: "end"
-        });
+        return parentDocument.scrollingElement
+            || parentDocument.documentElement;
     }
 
+    function scrollToBottom() {
+        const container = mainScrollContainer();
+
+        if (container) {
+            container.scrollTo({
+                top: container.scrollHeight,
+                behavior: "smooth"
+            });
+        }
+
+        // Fallbacks for older Streamlit DOM layouts.
+        const anchor = parentDocument.getElementById(
+            "latest-response-anchor"
+        );
+        if (anchor) {
+            anchor.scrollIntoView({ block: "end" });
+        }
+    }
+
+    // Retry across a longer window so late-rendering buttons,
+    // transport cards and the date picker are brought into view too.
     window.requestAnimationFrame(function () {
-        setTimeout(scrollToLatestResponse, 100);
-        setTimeout(scrollToLatestResponse, 450);
+        [80, 250, 500, 900, 1400].forEach(function (delay) {
+            setTimeout(scrollToBottom, delay);
+        });
     });
 })();
 </script>
