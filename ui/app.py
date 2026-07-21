@@ -6408,6 +6408,8 @@ components.html(
 
     function mainScrollContainer() {
         const candidates = [
+            'section[data-testid="stAppScrollToBottomContainer"]',
+            'section.stMain',
             'section[data-testid="stMain"]',
             '[data-testid="stAppViewContainer"] section.main',
             'section.main',
@@ -6424,30 +6426,22 @@ components.html(
             || parentDocument.documentElement;
     }
 
-    function scrollToBottom() {
+    // Instantly pin to the bottom. Using instant (not smooth) keeps the
+    // view glued to the bottom as late content reflows in, instead of
+    // firing several competing smooth animations that bounce up and down.
+    function pinToBottom() {
         const container = mainScrollContainer();
-
         if (container) {
-            container.scrollTo({
-                top: container.scrollHeight,
-                behavior: "smooth"
-            });
-        }
-
-        // Fallbacks for older Streamlit DOM layouts.
-        const anchor = parentDocument.getElementById(
-            "latest-response-anchor"
-        );
-        if (anchor) {
-            anchor.scrollIntoView({ block: "end" });
+            container.scrollTop = container.scrollHeight;
         }
     }
 
-    // Retry across a longer window so late-rendering buttons,
-    // transport cards and the date picker are brought into view too.
+    // A few instant re-pins cover late-rendering buttons, transport
+    // cards and the date picker without any visible jitter.
     window.requestAnimationFrame(function () {
-        [80, 250, 500, 900, 1400].forEach(function (delay) {
-            setTimeout(scrollToBottom, delay);
+        pinToBottom();
+        [150, 400, 800].forEach(function (delay) {
+            setTimeout(pinToBottom, delay);
         });
     });
 })();
