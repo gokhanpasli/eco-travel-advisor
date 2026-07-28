@@ -2976,7 +2976,19 @@ class ActionPrepareDetailChange(Action):
                 buttons=detail_change_buttons(tracker),
             )
 
-            return [FollowupAction("action_listen")]
+            # Record the details as they stand so "Cancel change" from
+            # this menu has something to fall back to. Without it the
+            # cancel action sees no backup and wrongly reports that
+            # there is no active change.
+            return [
+                SlotSet("editing_trip_detail", None),
+                SlotSet(
+                    "trip_change_backup",
+                    get_change_backup(tracker)
+                    or trip_details_snapshot(tracker),
+                ),
+                FollowupAction("action_listen"),
+            ]
 
         label = DETAIL_LABELS[detail_name]
 
@@ -3254,6 +3266,22 @@ def has_selected_trip_plan(tracker: Tracker) -> bool:
     )
 
 
+def trip_details_complete(tracker: Tracker) -> bool:
+    """True when every planning slot needed for recommendations is filled."""
+    return all(
+        tracker.get_slot(field) is not None
+        for field in (
+            "origin",
+            "destination",
+            "trip_type",
+            "departure_date",
+            "return_date",
+            "budget",
+            "sustainability_level",
+        )
+    )
+
+
 def show_selected_plan_review(
     dispatcher: CollectingDispatcher,
     tracker: Tracker,
@@ -3311,6 +3339,61 @@ class ActionCancelDetailChange(Action):
                 FollowupAction("action_listen"),
             ]
 
+        was_editing = tracker.get_slot("editing_trip_detail")
+
+        restored_events = [
+            SlotSet(field, backup.get(field))
+            for field in TRIP_DETAIL_FIELDS
+        ]
+
+        common_events = restored_events + [
+            SlotSet("pending_city", None),
+            SlotSet("pending_city_slot", None),
+            SlotSet("editing_trip_detail", None),
+            SlotSet("trip_change_backup", None),
+            SlotSet("awaiting_detail_confirmation", False),
+            SlotSet("fallback_count", 0),
+        ]
+
+        # Cancelling straight from the change menu means no value was
+        # actually edited, so return the user to the step they came
+        # from instead of pushing them back through the whole
+        # trip-details review.
+        if not was_editing:
+            if has_selected_trip_plan(tracker):
+                dispatcher.utter_message(
+                    text=(
+                        "No changes were made. Your selected trip "
+                        "plan is still active."
+                    )
+                )
+
+                if show_selected_plan_review(dispatcher, tracker):
+                    return common_events + [
+                        SlotSet("awaiting_trip_confirmation", False),
+                        FollowupAction("action_listen"),
+                    ]
+
+                # The plan review could not be rebuilt, so fall back to
+                # the options list without repeating the message above.
+                return common_events + [
+                    SlotSet("awaiting_trip_confirmation", False),
+                    FollowupAction("action_show_recommendations"),
+                ]
+
+            if trip_details_complete(tracker):
+                dispatcher.utter_message(
+                    text=(
+                        "No changes were made. Here are your "
+                        "transport options again."
+                    )
+                )
+
+                return common_events + [
+                    SlotSet("awaiting_trip_confirmation", False),
+                    FollowupAction("action_show_recommendations"),
+                ]
+
         origin = backup.get("origin")
         destination = backup.get("destination")
         trip_type = trip_type_label(
@@ -3349,19 +3432,8 @@ class ActionCancelDetailChange(Action):
             ],
         )
 
-        restored_events = [
-            SlotSet(field, backup.get(field))
-            for field in TRIP_DETAIL_FIELDS
-        ]
-
-        return restored_events + [
-            SlotSet("pending_city", None),
-            SlotSet("pending_city_slot", None),
-            SlotSet("editing_trip_detail", None),
-            SlotSet("trip_change_backup", None),
-            SlotSet("awaiting_detail_confirmation", False),
+        return common_events + [
             SlotSet("awaiting_trip_confirmation", True),
-            SlotSet("fallback_count", 0),
             FollowupAction("action_listen"),
         ]
 

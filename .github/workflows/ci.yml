@@ -6,6 +6,19 @@ on:
   pull_request:
 
 jobs:
+  unit-tests:
+    name: Action unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install test dependencies
+        run: pip install "rasa-sdk==3.6.2" dateparser requests pytest
+      - name: Run unit tests
+        run: pytest tests/test_actions.py -q
+
   lint:
     name: Syntax and YAML checks
     runs-on: ubuntu-latest
