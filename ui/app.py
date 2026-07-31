@@ -301,6 +301,77 @@ body,
     margin-top: 14px;
 }
 
+.plan-fact-card.wide {
+    grid-column: 1 / -1;
+}
+
+/* Journey chain: origin, each leg's vehicle, and any transfer port. */
+.journey-chain {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 2px;
+    margin: 4px 0 10px;
+}
+
+.journey-stop {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+}
+
+.journey-flag {
+    font-size: 1.05rem;
+    line-height: 1;
+}
+
+.journey-city {
+    color: var(--text);
+    font-size: 0.95rem;
+    font-weight: 850;
+    white-space: nowrap;
+}
+
+.journey-leg {
+    display: inline-flex;
+    align-items: center;
+    min-width: 46px;
+    padding: 0 4px;
+}
+
+.journey-leg::before,
+.journey-leg::after {
+    content: "";
+    flex: 1;
+    height: 2px;
+    border-radius: 2px;
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(22, 163, 74, 0.55) 0 5px,
+        transparent 5px 9px
+    );
+}
+
+.journey-leg-icon {
+    padding: 0 4px;
+    font-size: 1.05rem;
+    line-height: 1;
+}
+
+@media (max-width: 600px) {
+    .journey-leg {
+        min-width: 34px;
+    }
+
+    .journey-city {
+        font-size: 0.88rem;
+    }
+}
+
 .plan-fact-card {
     padding: 12px 14px;
     border: 1px solid var(--border);
@@ -2599,6 +2670,83 @@ def format_summary_date(value):
         return date.fromisoformat(str(value)).strftime("%d %b %Y")
     except (TypeError, ValueError):
         return None
+
+
+def pretty_date_range(value):
+    """Format both ends of a "<date> to <date>" range."""
+    text = str(value or "").strip()
+    match = re.match(r"^(.+?)\s+to\s+(.+)$", text, flags=re.IGNORECASE)
+
+    if not match:
+        return pretty_date(text)
+
+    return (
+        f"{pretty_date(match.group(1))} "
+        f"\u2192 {pretty_date(match.group(2))}"
+    )
+
+
+def clean_port_name(value):
+    """"Barcelona Ferry Port" reads better as just "Barcelona"."""
+    return re.sub(
+        r"\s*(ferry\s*)?port$",
+        "",
+        str(value or "").strip(),
+        flags=re.IGNORECASE,
+    ).strip()
+
+
+def build_journey_chain(origin, destination, mode, ferry_route=""):
+    """Berlin -> train -> Barcelona -> ferry -> Mallorca.
+
+    Falls back to a single leg when the route needs no crossing.
+    """
+    base_mode, _, via_port = str(mode or "").partition(" via ")
+    base_mode = base_mode.strip()
+    via_port = clean_port_name(via_port)
+
+    # The car route names its ports in a separate field instead.
+    if not via_port and ferry_route:
+        match = re.match(
+            r"\s*(.+?)\s+to\s+(.+)",
+            str(ferry_route),
+        )
+        if match:
+            via_port = clean_port_name(match.group(1))
+
+    stops = [(city_flag(origin), origin)]
+    legs = [transport_icon(base_mode)]
+
+    if via_port:
+        stops.append(("&#9875;", via_port))
+        legs.append("&#9972;")
+
+    stops.append((city_flag(destination), destination))
+
+    parts = []
+
+    for index, (flag, city) in enumerate(stops):
+        if index:
+            parts.append(
+                "<span class='journey-leg' aria-hidden='true'>"
+                f"<span class='journey-leg-icon'>{legs[index - 1]}</span>"
+                "</span>"
+            )
+
+        parts.append(
+            "<span class='journey-stop'>"
+            f"<span class='journey-flag' aria-hidden='true'>{flag}</span>"
+            f"<span class='journey-city'>{html.escape(str(city))}</span>"
+            "</span>"
+        )
+
+    return (
+        "<div class='journey-chain' role='img' aria-label='"
+        f"{html.escape(str(origin))} to {html.escape(str(destination))}"
+        f"{' via ' + html.escape(via_port) if via_port else ''}'>"
+        + "".join(parts)
+        + "</div>"
+    )
 
 
 def pretty_date(value):
@@ -5532,21 +5680,31 @@ def render_confirmed_plan(text):
     destination = plan["destination"] or "Destination"
     origin_flag = city_flag(origin)
     destination_flag = city_flag(destination)
-    is_car = str(plan["mode"]).strip().casefold() == "car"
+    # "Train via Barcelona" still travels by train.
+    confirmed_base_mode = str(
+        plan["mode"]
+    ).partition(" via ")[0].strip()
+
+    is_car = confirmed_base_mode.casefold() == "car"
     has_ferry = (
-        is_car
-        and (
-            str(plan.get("ferry_required") or "")
-            .strip()
-            .casefold()
-            .startswith("yes")
-            or bool(plan.get("ferry_route"))
-        )
+        str(plan.get("ferry_required") or "")
+        .strip()
+        .casefold()
+        .startswith("yes")
+        or bool(plan.get("ferry_route"))
+        or " via " in str(plan["mode"])
     )
     mode_icon = (
-        "🚗 · ⛴️"
+        f"{transport_icon(confirmed_base_mode)} · &#9972;"
         if has_ferry
-        else transport_icon(plan["mode"])
+        else transport_icon(confirmed_base_mode)
+    )
+
+    journey_chain_html = build_journey_chain(
+        origin,
+        destination,
+        plan["mode"],
+        plan.get("ferry_route", ""),
     )
 
     origin_date_html = (
@@ -5719,6 +5877,8 @@ def render_confirmed_plan(text):
             </div>
         </div>
 
+        {journey_chain_html}
+
         <div class="confirmed-trip-meta">
             {html.escape(trip_meta_text)}
         </div>
@@ -5801,6 +5961,12 @@ def render_trip_details_review(text):
     return_date = html.escape(
         pretty_date(find(r"Return:\s*(.+)"))
     )
+
+    travel_dates = (
+        f"{departure} &rarr; {return_date}"
+        if departure and return_date
+        else (departure or return_date or "Not set")
+    )
     budget = html.escape(
         find(r"Budget:\s*€?([\d.,]+)")
     )
@@ -5836,14 +6002,9 @@ def render_trip_details_review(text):
     </div>
 
     <div class="plan-facts-grid">
-        <div class="plan-fact-card">
-            <div class="plan-fact-label">Departure date</div>
-            <div class="plan-fact-value">📅 {departure}</div>
-        </div>
-
-        <div class="plan-fact-card">
-            <div class="plan-fact-label">Return date</div>
-            <div class="plan-fact-value">📅 {return_date}</div>
+        <div class="plan-fact-card wide">
+            <div class="plan-fact-label">Travel dates</div>
+            <div class="plan-fact-value">📅 {travel_dates}</div>
         </div>
 
         <div class="plan-fact-card">
@@ -5870,20 +6031,28 @@ def render_trip_details_review(text):
 
 def render_plan_review(text):
     plan = parse_plan_review_text(text)
-    mode_icon = transport_icon(plan["transport_mode"])
-    is_car = (
-        str(plan["transport_mode"]).strip().casefold()
-        == "car"
-    )
+
+    # "Train via Barcelona" still travels by train.
+    review_base_mode = str(
+        plan["transport_mode"]
+    ).partition(" via ")[0].strip()
+
+    mode_icon = transport_icon(review_base_mode)
+    is_car = review_base_mode.casefold() == "car"
     has_ferry = (
-        is_car
-        and (
-            str(plan.get("ferry_required") or "")
-            .strip()
-            .casefold()
-            .startswith("yes")
-            or bool(plan.get("ferry_route"))
-        )
+        str(plan.get("ferry_required") or "")
+        .strip()
+        .casefold()
+        .startswith("yes")
+        or bool(plan.get("ferry_route"))
+        or " via " in str(plan["transport_mode"])
+    )
+
+    journey_chain_html = build_journey_chain(
+        plan["origin"],
+        plan["destination"],
+        plan["transport_mode"],
+        plan.get("ferry_route", ""),
     )
 
     hotel_details_html = (
@@ -5923,7 +6092,8 @@ def render_plan_review(text):
 </div>
 """
         plan_subtitle_text = (
-            f"{plan['trip_type']} · Trip dates: {plan['dates']}"
+            f"{plan['trip_type']} · Trip dates: "
+            f"{pretty_date_range(plan['dates'])}"
         )
     else:
         plan_highlights_html = f"""
@@ -5962,7 +6132,8 @@ def render_plan_review(text):
 </div>
 """
         plan_subtitle_text = (
-            f"{plan['trip_type']} · {plan['dates']}"
+            f"{plan['trip_type']} · "
+            f"{pretty_date_range(plan['dates'])}"
         )
 
     experience_chips = "".join(
@@ -6004,11 +6175,7 @@ def render_plan_review(text):
 <div class="summary-box">
     <div class="summary-title">Review your selected trip plan</div>
 
-    <div class="plan-route">
-        <span>{html.escape(plan['origin'])}</span>
-        <span class="plan-route-arrow">&#8594;</span>
-        <span>{html.escape(plan['destination'])}</span>
-    </div>
+    {journey_chain_html}
     <div class="plan-subtitle">
         {html.escape(plan_subtitle_text)}
     </div>
