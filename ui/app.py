@@ -4103,7 +4103,13 @@ def _compact_transport_card(
 ):
     label = option["label"]
     mode = option["mode"]
-    is_car = str(mode).strip().casefold() == "car"
+
+    # Ferry variants arrive as "Train via Barcelona"; the leading word
+    # is the real transport mode.
+    base_mode, _, via_port = str(mode).partition(" via ")
+    base_mode = base_mode.strip()
+    via_port = via_port.strip()
+    is_car = base_mode.casefold() == "car"
 
     detail = re.sub(
         r"Estimated transport plus accommodation total:.*$",
@@ -4114,10 +4120,19 @@ def _compact_transport_card(
     # Train and bus routes to an island also carry a ferry leg, so the
     # ferry naming is not car-only.
     includes_ferry = "ferry required: yes" in detail.casefold()
+
     mode_display = (
-        f"{mode} + ferry"
+        f"{base_mode} + ferry"
         if includes_ferry
-        else mode
+        else base_mode
+    )
+
+    # Several ports can serve the same mode, so the buttons name the
+    # port as well; otherwise three cards share one label.
+    selection_label = (
+        f"{base_mode} via {via_port}"
+        if via_port
+        else mode_display
     )
 
     if is_car:
@@ -4201,7 +4216,12 @@ def _compact_transport_card(
             "Recommended</span>"
         )
 
-    if includes_ferry:
+    if via_port:
+        badges += (
+            "<span class='badge ferry-badge'>"
+            f"&#9972; via {html.escape(via_port)}</span>"
+        )
+    elif includes_ferry:
         badges += (
             "<span class='badge ferry-badge'>"
             "Includes ferry</span>"
@@ -4268,7 +4288,7 @@ div.st-key-transport_card_{message_index}_{option_index} {{
     <div class="card-inner">
         <div class="card-head">
             <div class="card-title">
-                <span class="mode-icon">{transport_icon(mode)}</span>
+                <span class="mode-icon">{transport_icon(base_mode)}</span>
                 <span>{html.escape(mode_display)}</span>
             </div>
 
@@ -4292,7 +4312,7 @@ div.st-key-transport_card_{message_index}_{option_index} {{
         if selected_mode:
             if selected_mode.casefold() == mode.casefold():
                 st.button(
-                    f"Selected {mode}",
+                    f"Selected {selection_label}",
                     key=(
                         f"transport_selected_{message_index}_"
                         f"{option_index}_{abs(hash(mode))}"
@@ -4303,7 +4323,7 @@ div.st-key-transport_card_{message_index}_{option_index} {{
 
         elif can_select:
             if st.button(
-                f"Select {mode}",
+                f"Select {selection_label}",
                 key=(
                     f"transport_select_{message_index}_"
                     f"{option_index}_{abs(hash(mode))}"

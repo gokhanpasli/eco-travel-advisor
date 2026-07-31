@@ -96,6 +96,11 @@ rules:
     - intent: select_transport_option
     - action: action_select_transport_option
 
+- rule: Choose whether to take the ferry
+  steps:
+    - intent: ferry_choice
+    - action: action_show_recommendations
+
 - rule: Human advisor handover
   steps:
     - intent: request_human_advisor

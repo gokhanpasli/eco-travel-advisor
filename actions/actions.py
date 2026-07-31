@@ -43,25 +43,52 @@ FERRY_PASSENGER_FARE_PER_KM = 0.15
 # OSRM can expose ferry sections through route steps.  The explicit
 # Mallorca corridor below also keeps the prototype useful if the public
 # router cannot return a connected island route at runtime.
+# Sailings that actually serve each island, so a train or bus route can
+# be built to a real port. Alicante and Malaga have no Mallorca service
+# and are deliberately absent.
+_MALLORCA_SAILINGS = [
+    {
+        "mainland_port": "Barcelona Ferry Port",
+        "mainland_port_coords": (41.3525, 2.1587),
+        "island_port": "Palma de Mallorca Port",
+        "island_port_coords": (39.5528, 2.6267),
+        "ferry_distance_km": 205.0,
+        "ferry_duration_minutes": 450,
+        "route_name": "Barcelona to Palma de Mallorca",
+        "via": "Barcelona",
+    },
+    {
+        "mainland_port": "Valencia Ferry Port",
+        "mainland_port_coords": (39.4470, -0.3160),
+        "island_port": "Palma de Mallorca Port",
+        "island_port_coords": (39.5528, 2.6267),
+        "ferry_distance_km": 265.0,
+        "ferry_duration_minutes": 480,
+        "route_name": "Valencia to Palma de Mallorca",
+        "via": "Valencia",
+    },
+    {
+        "mainland_port": "Denia Ferry Port",
+        "mainland_port_coords": (38.8404, 0.1057),
+        "island_port": "Palma de Mallorca Port",
+        "island_port_coords": (39.5528, 2.6267),
+        "ferry_distance_km": 150.0,
+        "ferry_duration_minutes": 330,
+        "route_name": "Denia to Palma de Mallorca",
+        "via": "Denia",
+    },
+]
+
+ISLAND_FERRY_ROUTES = {
+    "mallorca": _MALLORCA_SAILINGS,
+    "palma de mallorca": _MALLORCA_SAILINGS,
+}
+
+# The car route model only follows one corridor, so it uses the first
+# sailing for each island.
 KNOWN_FERRY_CORRIDORS = {
-    "mallorca": {
-        "mainland_port": "Barcelona Ferry Port",
-        "mainland_port_coords": (41.3525, 2.1587),
-        "island_port": "Palma de Mallorca Port",
-        "island_port_coords": (39.5528, 2.6267),
-        "ferry_distance_km": 205.0,
-        "ferry_duration_minutes": 450,
-        "route_name": "Barcelona to Palma de Mallorca",
-    },
-    "palma de mallorca": {
-        "mainland_port": "Barcelona Ferry Port",
-        "mainland_port_coords": (41.3525, 2.1587),
-        "island_port": "Palma de Mallorca Port",
-        "island_port_coords": (39.5528, 2.6267),
-        "ferry_distance_km": 205.0,
-        "ferry_duration_minutes": 450,
-        "route_name": "Barcelona to Palma de Mallorca",
-    },
+    key: sailings[0]
+    for key, sailings in ISLAND_FERRY_ROUTES.items()
 }
 
 
@@ -775,62 +802,82 @@ def road_section_estimate(
     return fallback
 
 
-def island_ferry_legs(origin: str, destination: str):
-    """Land and ferry legs for a train or bus route onto an island.
+def island_ferry_options(origin: str, destination: str):
+    """Every land-plus-ferry routing onto an island, cheapest land leg first.
 
-    Returns None for ordinary mainland routes, so those keep using the
-    plain point-to-point distance.
+    Returns an empty list for ordinary mainland routes, so those keep
+    using the plain point-to-point distance.
     """
     origin_key = str(origin).strip().casefold()
     destination_key = str(destination).strip().casefold()
-    origin_corridor = KNOWN_FERRY_CORRIDORS.get(origin_key)
-    destination_corridor = KNOWN_FERRY_CORRIDORS.get(
-        destination_key
-    )
+    origin_sailings = ISLAND_FERRY_ROUTES.get(origin_key)
+    destination_sailings = ISLAND_FERRY_ROUTES.get(destination_key)
 
     # Only one end of the journey may be an island for this model.
-    if bool(origin_corridor) == bool(destination_corridor):
-        return None
+    if bool(origin_sailings) == bool(destination_sailings):
+        return []
 
-    travelling_to_island = bool(destination_corridor)
-    corridor = destination_corridor or origin_corridor
+    travelling_to_island = bool(destination_sailings)
+    sailings = destination_sailings or origin_sailings
 
     origin_coords = CITY_COORDS.get(origin)
     destination_coords = CITY_COORDS.get(destination)
 
     if not origin_coords or not destination_coords:
-        return None
+        return []
 
-    if travelling_to_island:
-        land_from, land_to = origin_coords, corridor["mainland_port_coords"]
-        island_from, island_to = (
-            corridor["island_port_coords"],
-            destination_coords,
-        )
-        departure_port = corridor["mainland_port"]
-        arrival_port = corridor["island_port"]
-    else:
-        land_from, land_to = (
-            corridor["mainland_port_coords"],
-            destination_coords,
-        )
-        island_from, island_to = origin_coords, corridor["island_port_coords"]
-        departure_port = corridor["island_port"]
-        arrival_port = corridor["mainland_port"]
+    options = []
 
-    land_distance_km = (
-        haversine_between_coords(land_from, land_to)
-        + haversine_between_coords(island_from, island_to)
+    for sailing in sailings:
+        if travelling_to_island:
+            land_from, land_to = (
+                origin_coords,
+                sailing["mainland_port_coords"],
+            )
+            island_from, island_to = (
+                sailing["island_port_coords"],
+                destination_coords,
+            )
+            departure_port = sailing["mainland_port"]
+            arrival_port = sailing["island_port"]
+        else:
+            land_from, land_to = (
+                sailing["mainland_port_coords"],
+                destination_coords,
+            )
+            island_from, island_to = (
+                origin_coords,
+                sailing["island_port_coords"],
+            )
+            departure_port = sailing["island_port"]
+            arrival_port = sailing["mainland_port"]
+
+        land_distance_km = (
+            haversine_between_coords(land_from, land_to)
+            + haversine_between_coords(island_from, island_to)
+        )
+
+        options.append({
+            "land_distance_km": round(land_distance_km, 1),
+            "ferry_distance_km": sailing["ferry_distance_km"],
+            "ferry_duration_minutes": sailing["ferry_duration_minutes"],
+            "ferry_route_name": sailing["route_name"],
+            "ferry_departure_port": departure_port,
+            "ferry_arrival_port": arrival_port,
+            "via": sailing["via"],
+        })
+
+    return sorted(
+        options,
+        key=lambda option: option["land_distance_km"],
     )
 
-    return {
-        "land_distance_km": round(land_distance_km, 1),
-        "ferry_distance_km": corridor["ferry_distance_km"],
-        "ferry_duration_minutes": corridor["ferry_duration_minutes"],
-        "ferry_route_name": corridor["route_name"],
-        "ferry_departure_port": departure_port,
-        "ferry_arrival_port": arrival_port,
-    }
+
+def island_ferry_legs(origin: str, destination: str):
+    """The shortest land-plus-ferry routing, or None on mainland routes."""
+    options = island_ferry_options(origin, destination)
+
+    return options[0] if options else None
 
 
 def known_ferry_route_estimate(
@@ -1428,6 +1475,7 @@ def build_transport_options(
     sustainability_level: str,
     trip_type: str,
     accommodation_total: float,
+    ferry_declined: bool = False,
 ) -> List[Dict[str, Any]]:
     distance_km = haversine_distance_km(
         origin,
@@ -1451,59 +1499,70 @@ def build_transport_options(
         "Flight",
     ]
 
-    # A train or bus cannot reach an island on its own, so on those
-    # corridors the land legs are measured to and from the ferry ports
-    # and the crossing is added as a separate leg further below.
-    ferry_legs = island_ferry_legs(origin, destination)
-    ferry_modes = {"Train", "Bus"} if ferry_legs else set()
+    # A train or bus cannot reach an island on its own. Each sailing
+    # that serves the island becomes its own option, so the ports can be
+    # compared on price and carbon side by side.
+    ferry_options = island_ferry_options(origin, destination)
 
-    mode_distances = {
-        mode: (
+    if ferry_declined and ferry_options:
+        # The traveller ruled out the crossing, so only the modes that
+        # can reach the island without one remain.
+        modes = ["Flight"]
+        ferry_options = []
+
+    variants = []
+
+    for mode in modes:
+        if ferry_options and mode in ("Train", "Bus"):
+            for ferry in ferry_options:
+                variants.append((mode, ferry))
+        else:
+            variants.append((mode, None))
+
+    variant_distances = [
+        (
             car_route["road_distance_km"]
             if mode == "Car"
             else (
-                ferry_legs["land_distance_km"]
-                if mode in ferry_modes
+                ferry["land_distance_km"]
+                if ferry
                 else distance_km
             )
         )
-        for mode in modes
-    }
+        for mode, ferry in variants
+    ]
 
     with ThreadPoolExecutor(
-        max_workers=len(modes),
+        max_workers=max(1, len(variants)),
     ) as executor:
-        carbon_estimates = dict(
-            zip(
-                modes,
-                executor.map(
-                    lambda mode: estimate_carbon_kg(
-                        mode,
-                        mode_distances[mode],
-                    ),
-                    modes,
-                ),
+        carbon_estimates = list(
+            executor.map(
+                lambda pair: estimate_carbon_kg(pair[0], pair[1]),
+                [
+                    (mode, variant_distances[index])
+                    for index, (mode, _) in enumerate(variants)
+                ],
             )
         )
 
     options = []
     weights = scoring_weights(sustainability_level)
 
-    for mode in modes:
-        mode_distance_km = mode_distances[mode]
+    for variant_index, (mode, ferry_legs) in enumerate(variants):
+        mode_distance_km = variant_distances[variant_index]
 
         price = estimate_price(
             mode,
             mode_distance_km,
         )
 
-        carbon, source = carbon_estimates[mode]
+        carbon, source = carbon_estimates[variant_index]
 
         # Add the ferry crossing on top of the land leg so the price,
         # carbon and distance describe the whole door-to-door journey.
         public_ferry_details_message = ""
 
-        if mode in ferry_modes:
+        if ferry_legs:
             ferry_carbon = (
                 ferry_legs["ferry_distance_km"]
                 * FERRY_PASSENGER_CARBON_KG_PER_KM
@@ -1615,8 +1674,17 @@ def build_transport_options(
                 f"Route source: {car_route['route_source']}. "
             )
 
+        # Ferry variants need distinct names so each card can be
+        # selected and looked up on its own.
+        variant_mode = (
+            f"{mode} via {ferry_legs['via']}"
+            if ferry_legs
+            else mode
+        )
+
         options.append({
-            "mode": mode,
+            "mode": variant_mode,
+            "base_mode": mode,
             "price": price,
             "carbon": carbon,
             "label": label,
@@ -1624,6 +1692,7 @@ def build_transport_options(
             "estimated_trip_total": round(estimated_trip_total, 2),
             "over_budget": estimated_trip_total > budget_value,
             "distance_km": round(mode_distance_km, 1),
+            "ferry": dict(ferry_legs) if ferry_legs else None,
             "car_route": (
                 dict(car_route)
                 if mode == "Car"
@@ -1678,6 +1747,7 @@ def format_recommendations(
     budget: Any,
     sustainability_level: str,
     trip_type: str,
+    ferry_declined: bool = False,
 ) -> str:
     origin = normalise_city(origin)
     destination = normalise_city(destination)
@@ -1725,6 +1795,7 @@ def format_recommendations(
         sustainability_level=sustainability_level,
         trip_type=trip_type,
         accommodation_total=lowest_hotel_total,
+        ferry_declined=ferry_declined,
     )
 
     experiences = get_cultural_experiences(
@@ -3169,6 +3240,7 @@ class ActionPrepareDetailChange(Action):
                 [
                     SlotSet("pending_city", None),
                     SlotSet("pending_city_slot", None),
+                    SlotSet("ferry_preference", None),
                 ]
             )
 
@@ -3575,6 +3647,7 @@ class ActionResetTripDetails(Action):
         return [
             SlotSet("origin", None),
             SlotSet("destination", None),
+            SlotSet("ferry_preference", None),
             SlotSet("trip_type", None),
             SlotSet("departure_date", None),
             SlotSet("return_date", None),
@@ -3589,37 +3662,59 @@ class ActionResetTripDetails(Action):
 
         ]
 
-def transport_option_buttons():
-    return [
-        {
-            "title": "Choose Train plan",
-            "payload": (
-                '/select_transport_option'
-                '{"selected_transport_mode":"Train"}'
-            ),
-        },
-        {
-            "title": "Choose Bus plan",
-            "payload": (
-                '/select_transport_option'
-                '{"selected_transport_mode":"Bus"}'
-            ),
-        },
-        {
-            "title": "Choose Car plan",
-            "payload": (
-                '/select_transport_option'
-                '{"selected_transport_mode":"Car"}'
-            ),
-        },
-        {
+def transport_option_buttons(
+    origin: str = None,
+    destination: str = None,
+    ferry_declined: bool = False,
+):
+    """One button per selectable transport option.
+
+    Island routes split the train and bus plans by ferry port, so the
+    buttons have to name the same variants the cards show.
+    """
+    modes = ["Train", "Bus", "Car", "Flight"]
+
+    island_route = (
+        island_ferry_options(origin, destination)
+        if origin and destination
+        else []
+    )
+
+    if island_route and ferry_declined:
+        # Nothing but a flight can reach the island without the ferry.
+        return [{
             "title": "Choose Flight plan",
             "payload": (
                 '/select_transport_option'
                 '{"selected_transport_mode":"Flight"}'
             ),
-        },
-    ]
+        }]
+
+    ferry_options = island_route
+
+    buttons = []
+
+    for mode in modes:
+        if ferry_options and mode in ("Train", "Bus"):
+            for ferry in ferry_options:
+                variant = f"{mode} via {ferry['via']}"
+                buttons.append({
+                    "title": f"Choose {variant} plan",
+                    "payload": (
+                        '/select_transport_option'
+                        f'{{"selected_transport_mode":"{variant}"}}'
+                    ),
+                })
+        else:
+            buttons.append({
+                "title": f"Choose {mode} plan",
+                "payload": (
+                    '/select_transport_option'
+                    f'{{"selected_transport_mode":"{mode}"}}'
+                ),
+            })
+
+    return buttons
 
 class ActionShowRecommendations(Action):
 
@@ -3666,6 +3761,48 @@ class ActionShowRecommendations(Action):
             )
             return [FollowupAction("action_listen")]
 
+        # An island destination cannot be reached by land alone, so ask
+        # once whether the traveller is willing to take the crossing.
+        ferry_preference = tracker.get_slot("ferry_preference")
+        island_route = island_ferry_options(
+            normalise_city(origin),
+            normalise_city(destination),
+        )
+
+        if island_route and not ferry_preference:
+            ports = ", ".join(
+                sailing["via"] for sailing in island_route
+            )
+
+            dispatcher.utter_message(
+                text=(
+                    f"{normalise_city(destination)} is an island, so a "
+                    "train or bus can only get you as far as the coast. "
+                    f"Ferries sail from {ports}. "
+                    "Would you like me to include ferry crossings?"
+                ),
+                buttons=[
+                    {
+                        "title": "Yes, include ferry routes",
+                        "payload": (
+                            '/ferry_choice'
+                            '{"ferry_preference":"accepted"}'
+                        ),
+                    },
+                    {
+                        "title": "No ferry for me",
+                        "payload": (
+                            '/ferry_choice'
+                            '{"ferry_preference":"declined"}'
+                        ),
+                    },
+                ],
+            )
+
+            return [FollowupAction("action_listen")]
+
+        ferry_declined = ferry_preference == "declined"
+
         recommendations = format_recommendations(
             origin=origin,
             destination=destination,
@@ -3674,7 +3811,18 @@ class ActionShowRecommendations(Action):
             budget=budget,
             sustainability_level=sustainability_level,
             trip_type=trip_type,
+            ferry_declined=ferry_declined,
         )
+
+        if ferry_declined and island_route:
+            dispatcher.utter_message(
+                text=(
+                    "Ferry crossings are excluded, so flying is the only "
+                    f"way left to reach {normalise_city(destination)}. "
+                    "For comparison, a train and ferry routing would emit "
+                    "roughly a fifth of the carbon."
+                )
+            )
 
         if "Budget alert: Your current budget does " in recommendations:
             follow_up_buttons = [
@@ -3713,7 +3861,11 @@ class ActionShowRecommendations(Action):
 
         dispatcher.utter_message(
             text=recommendations,
-            buttons=transport_option_buttons() + follow_up_buttons,
+            buttons=transport_option_buttons(
+                normalise_city(origin),
+                normalise_city(destination),
+                ferry_declined=ferry_declined,
+            ) + follow_up_buttons,
         )
 
         return [
@@ -3856,8 +4008,32 @@ def build_selected_plan_context(
     }
 
 
+def selected_ferry_text(selected_option):
+    """Ferry lines for a train or bus plan that crosses to an island.
+
+    The car ferry is described by selected_car_route_text instead.
+    """
+    ferry = selected_option.get("ferry")
+
+    if not ferry:
+        return ""
+
+    return (
+        "Ferry required: Yes\n"
+        "Ferry route: "
+        f"{ferry['ferry_departure_port']} to "
+        f"{ferry['ferry_arrival_port']}\n"
+        "Ferry crossing: "
+        f"{ferry['ferry_distance_km']:.0f} km, "
+        f"{format_drive_duration(ferry['ferry_duration_minutes'])}\n"
+        f"Land leg: {ferry['land_distance_km']:.0f} km via "
+        f"{ferry['via']}\n"
+        "Ferry fare and emissions are prototype estimates\n"
+    )
+
+
 def selected_car_route_text(selected_option):
-    if selected_option.get("mode") != "Car":
+    if selected_option.get("base_mode", selected_option.get("mode")) != "Car":
         return ""
 
     car_route = selected_option.get("car_route") or {}
@@ -3924,6 +4100,10 @@ def selected_plan_review_text(plan_context):
         selected_option
     )
 
+    ferry_text = selected_ferry_text(
+        selected_option
+    )
+
     return (
         "Review your selected trip plan:\n\n"
         f"Route: {plan_context['origin']} to {plan_context['destination']}\n"
@@ -3932,6 +4112,7 @@ def selected_plan_review_text(plan_context):
         f"Transport: {selected_option['mode']}, €{selected_option['price']}, "
         f"{selected_option['carbon']} kg CO2e\n"
         f"{car_route_text}"
+        f"{ferry_text}"
         f"Hotel: {selected_hotel['name']} in {plan_context['destination']}, "
         f"€{selected_hotel['price']} per night, "
         f"€{selected_hotel['total_price']} total for "
@@ -3969,6 +4150,10 @@ def selected_plan_final_text(plan_context):
         selected_option
     )
 
+    ferry_text = selected_ferry_text(
+        selected_option
+    )
+
     return (
         f"Selected trip plan: {selected_option['mode']}\n\n"
         f"Route: {plan_context['origin']} to {plan_context['destination']}\n"
@@ -3977,6 +4162,7 @@ def selected_plan_final_text(plan_context):
         f"Transport estimate: €{selected_option['price']}\n"
         f"Transport carbon estimate: {selected_option['carbon']} kg CO2e\n"
         f"{car_route_text}"
+        f"{ferry_text}"
         f"Estimated trip total: €{selected_option['estimated_trip_total']:.0f}, "
         f"{budget_status}.\n"
         f"Accommodation: {selected_hotel['name']} in {plan_context['destination']}, "

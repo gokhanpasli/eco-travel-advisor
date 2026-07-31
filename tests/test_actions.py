@@ -20,6 +20,7 @@ from actions.actions import (
     ActionCancelDetailChange,
     ActionPrepareDetailChange,
     island_ferry_legs,
+    island_ferry_options,
 )
 
 
@@ -182,6 +183,28 @@ def test_island_route_has_a_ferry_leg():
 def test_mainland_route_has_no_ferry_leg():
     """Ordinary routes keep the plain point-to-point distance."""
     assert island_ferry_legs("Berlin", "Rome") is None
+
+
+def test_island_offers_every_sailing_port():
+    """Each port that actually serves the island is offered."""
+    options = island_ferry_options("Berlin", "Mallorca")
+    ports = {option["via"] for option in options}
+
+    assert ports == {"Barcelona", "Valencia", "Denia"}, (
+        "Alicante and Malaga have no Mallorca sailing and must not appear"
+    )
+
+
+def test_ferry_ports_are_ordered_by_land_distance():
+    """The shortest land leg is offered first."""
+    options = island_ferry_options("Berlin", "Mallorca")
+    distances = [option["land_distance_km"] for option in options]
+
+    assert distances == sorted(distances)
+
+
+def test_mainland_route_offers_no_sailings():
+    assert island_ferry_options("Berlin", "Rome") == []
 
 
 def test_island_route_is_symmetric():

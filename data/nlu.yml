@@ -368,6 +368,21 @@ nlu:
     - update my [travel purpose](detail_to_change)
     - choose a different [travel scenario](detail_to_change)
 
+- intent: ferry_choice
+  examples: |
+    - yes I can take the ferry
+    - a ferry is fine
+    - show me the ferry routes
+    - I am happy to sail
+    - ferry works for me
+    - I would like the ferry crossing
+    - no ferry please
+    - I do not want to take a ferry
+    - I would rather not sail
+    - skip the ferry
+    - avoid the ferry crossing
+    - no boats for me
+
 - intent: cancel_change
   examples: |
     - cancel this edit

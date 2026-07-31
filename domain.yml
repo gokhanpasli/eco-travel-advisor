@@ -20,6 +20,7 @@ intents:
   - deny
   - change_trip_detail
   - cancel_change
+  - ferry_choice
   - out_of_scope
 
 entities:
@@ -33,6 +34,7 @@ entities:
   - selected_hotel_name
   - detail_to_change
   - trip_type
+  - ferry_preference
 
 slots:
   origin:
@@ -191,6 +193,13 @@ slots:
     influence_conversation: true
     mappings:
       - type: custom
+
+  ferry_preference:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: from_entity
+        entity: ferry_preference
 
   fallback_count:
     type: float
