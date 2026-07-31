@@ -802,6 +802,42 @@ def road_section_estimate(
     return fallback
 
 
+def transport_base_mode(mode) -> str:
+    """The underlying mode of a possibly ferry-qualified selection.
+
+    "Train via Barcelona" is still a train.
+    """
+    text = re.split(
+        r"\s+via\s+",
+        str(mode or ""),
+        flags=re.IGNORECASE,
+    )[0]
+
+    return text.strip().title()
+
+
+def normalise_transport_mode(value):
+    """Tidy a selected mode while keeping any "via <port>" suffix intact."""
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+
+    if not text:
+        return None
+
+    match = re.match(
+        r"^(.*?)\s+via\s+(.*)$",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    if match:
+        return (
+            f"{match.group(1).strip().title()} via "
+            f"{match.group(2).strip().title()}"
+        )
+
+    return text.title()
+
+
 def island_ferry_options(origin: str, destination: str):
     """Every land-plus-ferry routing onto an island, cheapest land leg first.
 
@@ -4188,7 +4224,7 @@ class ActionSelectTransportOption(Action):
         )
 
         if selected_mode:
-            return str(selected_mode).title()
+            return normalise_transport_mode(selected_mode)
 
         text = str(tracker.latest_message.get("text", ""))
         lowered = text.casefold()
@@ -4208,7 +4244,12 @@ class ActionSelectTransportOption(Action):
 
         selected_mode = self._selected_mode(tracker)
 
-        if selected_mode not in {"Train", "Bus", "Car", "Flight"}:
+        if transport_base_mode(selected_mode) not in {
+            "Train",
+            "Bus",
+            "Car",
+            "Flight",
+        }:
             dispatcher.utter_message(
                 text=(
                     "Please choose one of the transport cards "

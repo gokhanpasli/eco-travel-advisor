@@ -19,8 +19,11 @@ from rasa_sdk.executor import CollectingDispatcher
 from actions.actions import (
     ActionCancelDetailChange,
     ActionPrepareDetailChange,
+    ActionSelectTransportOption,
     island_ferry_legs,
     island_ferry_options,
+    normalise_transport_mode,
+    transport_base_mode,
 )
 
 
@@ -63,6 +66,7 @@ def make_tracker(slots, intent="change_trip_detail", entities=None):
         latest_message={
             "intent": {"name": intent},
             "entities": entities or [],
+            "text": "",
         },
         events=[],
         paused=False,
@@ -205,6 +209,49 @@ def test_ferry_ports_are_ordered_by_land_distance():
 
 def test_mainland_route_offers_no_sailings():
     assert island_ferry_options("Berlin", "Rome") == []
+
+
+def test_mode_name_keeps_its_port_readable():
+    """Title-casing the whole name used to produce "Train Via Barcelona"."""
+    assert normalise_transport_mode("train via barcelona") == "Train via Barcelona"
+    assert normalise_transport_mode("TRAIN VIA DENIA") == "Train via Denia"
+    assert normalise_transport_mode("flight") == "Flight"
+
+
+def test_base_mode_ignores_the_port():
+    assert transport_base_mode("Train via Barcelona") == "Train"
+    assert transport_base_mode("Bus via Denia") == "Bus"
+    assert transport_base_mode("Flight") == "Flight"
+
+
+def test_ferry_variant_can_be_selected():
+    """Selecting a port variant was rejected as an unknown mode."""
+    text, slots, _ = run_action(
+        ActionSelectTransportOption(),
+        dict(TRIP_SLOTS, ferry_preference="accepted"),
+        intent="select_transport_option",
+        entities=[{
+            "entity": "selected_transport_mode",
+            "value": "Train via Barcelona",
+        }],
+    )
+
+    assert "choose one of the transport cards" not in text.lower()
+    assert slots["selected_transport_mode"] == "Train via Barcelona"
+
+
+def test_unknown_mode_is_still_rejected():
+    text, _, _ = run_action(
+        ActionSelectTransportOption(),
+        TRIP_SLOTS,
+        intent="select_transport_option",
+        entities=[{
+            "entity": "selected_transport_mode",
+            "value": "Teleport",
+        }],
+    )
+
+    assert "choose one of the transport cards" in text.lower()
 
 
 def test_island_route_is_symmetric():

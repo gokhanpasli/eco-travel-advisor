@@ -2601,6 +2601,16 @@ def format_summary_date(value):
         return None
 
 
+def pretty_date(value):
+    """Render an ISO date as "01 Aug 2026", leaving anything else alone."""
+    text = str(value or "").strip()
+
+    try:
+        return date.fromisoformat(text).strftime("%d %b %Y")
+    except (TypeError, ValueError):
+        return text
+
+
 def humanize_slot(value):
     """Turn a raw slot value like 'rural_eco_tour' into 'Rural Eco Tour'."""
     text = str(value or "").strip().replace("_", " ").replace("-", " ")
@@ -5545,7 +5555,7 @@ def render_confirmed_plan(text):
         else (
             "<span class='confirmed-city-date'>"
             "<span class='confirmed-date-label'>Departure</span>"
-            f"{html.escape(plan['departure_date'])}"
+            f"{html.escape(pretty_date(plan['departure_date']))}"
             "</span>"
         )
     )
@@ -5555,7 +5565,7 @@ def render_confirmed_plan(text):
         else (
             "<span class='confirmed-city-date'>"
             "<span class='confirmed-date-label'>Return</span>"
-            f"{html.escape(plan['return_date'])}"
+            f"{html.escape(pretty_date(plan['return_date']))}"
             "</span>"
         )
     )
@@ -5786,16 +5796,16 @@ def render_trip_details_review(text):
         find(r"Trip type:\s*(.+)")
     )
     departure = html.escape(
-        find(r"Departure:\s*(.+)")
+        pretty_date(find(r"Departure:\s*(.+)"))
     )
     return_date = html.escape(
-        find(r"Return:\s*(.+)")
+        pretty_date(find(r"Return:\s*(.+)"))
     )
     budget = html.escape(
         find(r"Budget:\s*€?([\d.,]+)")
     )
     sustainability = html.escape(
-        find(r"Sustainability priority:\s*(.+)")
+        find(r"Sustainability priority:\s*(.+)").capitalize()
     )
 
     change_badge = (
@@ -5827,12 +5837,12 @@ def render_trip_details_review(text):
 
     <div class="plan-facts-grid">
         <div class="plan-fact-card">
-            <div class="plan-fact-label">Departure</div>
+            <div class="plan-fact-label">Departure date</div>
             <div class="plan-fact-value">📅 {departure}</div>
         </div>
 
         <div class="plan-fact-card">
-            <div class="plan-fact-label">Return</div>
+            <div class="plan-fact-label">Return date</div>
             <div class="plan-fact-value">📅 {return_date}</div>
         </div>
 
@@ -6456,11 +6466,19 @@ def render_trip_summary_rail():
     ]
 
     if transport:
+        # "Train via Barcelona" keeps its lower-case "via" and the icon
+        # comes from the underlying mode.
+        transport_base, _, transport_port = transport.partition(" via ")
+        transport_label = humanize_slot(transport_base)
+
+        if transport_port:
+            transport_label += f" via {transport_port.strip()}"
+
         facts.append(
             fact(
-                transport_icon(transport),
+                transport_icon(transport_base),
                 "Transport",
-                html.escape(humanize_slot(transport)),
+                html.escape(transport_label),
             )
         )
 
@@ -6567,6 +6585,15 @@ for message_index, message in enumerate(
     is_latest_message = (
         message_index == len(st.session_state.messages) - 1
     )
+
+    # Marks where the newest reply begins, so a tall answer such as a
+    # list of transport cards is scrolled to its first option instead
+    # of its last one.
+    if is_latest_message:
+        st.html(
+            '<div id="latest-response-start" '
+            'aria-hidden="true"></div>'
+        )
 
     if message["role"] == "user":
         render_user_message(message)
@@ -6751,14 +6778,32 @@ components.html(
             || parentDocument.documentElement;
     }
 
-    // Instantly pin to the bottom. Using instant (not smooth) keeps the
-    // view glued to the bottom as late content reflows in, instead of
-    // firing several competing smooth animations that bounce up and down.
+    // Bring the start of the newest reply to the top of the view.
+    // Short replies get clamped to the bottom by the browser, so they
+    // still behave the way a chat is expected to, while a tall reply
+    // such as a list of transport cards opens on its first option.
+    // Instant (not smooth) keeps the view steady as late content
+    // reflows in, instead of firing competing animations that bounce.
     function pinToBottom() {
         const container = mainScrollContainer();
-        if (container) {
-            container.scrollTop = container.scrollHeight;
+
+        if (!container) {
+            return;
         }
+
+        const anchor = parentDocument.getElementById(
+            "latest-response-start"
+        );
+
+        if (!anchor) {
+            container.scrollTop = container.scrollHeight;
+            return;
+        }
+
+        const anchorTop = anchor.getBoundingClientRect().top;
+        const containerTop = container.getBoundingClientRect().top;
+
+        container.scrollTop += (anchorTop - containerTop) - 12;
     }
 
     // A few instant re-pins cover late-rendering buttons, transport
