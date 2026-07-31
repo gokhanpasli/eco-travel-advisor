@@ -3875,12 +3875,11 @@ def _compact_transport_card(
         option["source"],
         flags=re.I,
     ).strip()
-    includes_ferry = (
-        is_car
-        and "ferry required: yes" in detail.casefold()
-    )
+    # Train and bus routes to an island also carry a ferry leg, so the
+    # ferry naming is not car-only.
+    includes_ferry = "ferry required: yes" in detail.casefold()
     mode_display = (
-        "Car + ferry"
+        f"{mode} + ferry"
         if includes_ferry
         else mode
     )

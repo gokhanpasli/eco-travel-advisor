@@ -19,6 +19,7 @@ from rasa_sdk.executor import CollectingDispatcher
 from actions.actions import (
     ActionCancelDetailChange,
     ActionPrepareDetailChange,
+    island_ferry_legs,
 )
 
 
@@ -165,6 +166,31 @@ def test_cancel_with_selected_plan_sends_one_message():
     )
 
     assert text.lower().count("no changes were made") == 1
+
+
+def test_island_route_has_a_ferry_leg():
+    """A train or bus cannot reach an island without a crossing."""
+    legs = island_ferry_legs("Berlin", "Mallorca")
+
+    assert legs is not None, "Mallorca should be treated as an island"
+    assert legs["ferry_distance_km"] > 0
+    assert legs["land_distance_km"] > 0
+    assert "Barcelona" in legs["ferry_departure_port"]
+    assert "Palma" in legs["ferry_arrival_port"]
+
+
+def test_mainland_route_has_no_ferry_leg():
+    """Ordinary routes keep the plain point-to-point distance."""
+    assert island_ferry_legs("Berlin", "Rome") is None
+
+
+def test_island_route_is_symmetric():
+    """Leaving the island needs the same crossing as arriving."""
+    outbound = island_ferry_legs("Berlin", "Mallorca")
+    inbound = island_ferry_legs("Mallorca", "Berlin")
+
+    assert inbound is not None
+    assert inbound["ferry_distance_km"] == outbound["ferry_distance_km"]
 
 
 def test_cancel_without_any_context_is_honest():

@@ -33,6 +33,13 @@ OSRM_ROUTE_CACHE = {}
 DEFAULT_CAR_FUEL_L_PER_100_KM = 6.5
 DEFAULT_FUEL_PRICE_EUR_PER_L = 1.80
 
+# Foot-passenger ferry assumptions, used when a train or bus route has
+# to cross to an island. A train or bus cannot reach an island on its
+# own, so the crossing is modelled as a separate leg.
+FERRY_PASSENGER_CARBON_KG_PER_KM = 0.115
+FERRY_PASSENGER_FARE_BASE_EUR = 25
+FERRY_PASSENGER_FARE_PER_KM = 0.15
+
 # OSRM can expose ferry sections through route steps.  The explicit
 # Mallorca corridor below also keeps the prototype useful if the public
 # router cannot return a connected island route at runtime.
@@ -514,6 +521,13 @@ def haversine_distance_km(origin: str, destination: str) -> float:
     if not origin_coords or not destination_coords:
         return 900.0
 
+    return haversine_between_coords(
+        origin_coords,
+        destination_coords,
+    )
+
+
+def haversine_between_coords(origin_coords, destination_coords) -> float:
     lat1, lon1 = origin_coords
     lat2, lon2 = destination_coords
 
@@ -759,6 +773,64 @@ def road_section_estimate(
     )
     fallback["live_route"] = False
     return fallback
+
+
+def island_ferry_legs(origin: str, destination: str):
+    """Land and ferry legs for a train or bus route onto an island.
+
+    Returns None for ordinary mainland routes, so those keep using the
+    plain point-to-point distance.
+    """
+    origin_key = str(origin).strip().casefold()
+    destination_key = str(destination).strip().casefold()
+    origin_corridor = KNOWN_FERRY_CORRIDORS.get(origin_key)
+    destination_corridor = KNOWN_FERRY_CORRIDORS.get(
+        destination_key
+    )
+
+    # Only one end of the journey may be an island for this model.
+    if bool(origin_corridor) == bool(destination_corridor):
+        return None
+
+    travelling_to_island = bool(destination_corridor)
+    corridor = destination_corridor or origin_corridor
+
+    origin_coords = CITY_COORDS.get(origin)
+    destination_coords = CITY_COORDS.get(destination)
+
+    if not origin_coords or not destination_coords:
+        return None
+
+    if travelling_to_island:
+        land_from, land_to = origin_coords, corridor["mainland_port_coords"]
+        island_from, island_to = (
+            corridor["island_port_coords"],
+            destination_coords,
+        )
+        departure_port = corridor["mainland_port"]
+        arrival_port = corridor["island_port"]
+    else:
+        land_from, land_to = (
+            corridor["mainland_port_coords"],
+            destination_coords,
+        )
+        island_from, island_to = origin_coords, corridor["island_port_coords"]
+        departure_port = corridor["island_port"]
+        arrival_port = corridor["mainland_port"]
+
+    land_distance_km = (
+        haversine_between_coords(land_from, land_to)
+        + haversine_between_coords(island_from, island_to)
+    )
+
+    return {
+        "land_distance_km": round(land_distance_km, 1),
+        "ferry_distance_km": corridor["ferry_distance_km"],
+        "ferry_duration_minutes": corridor["ferry_duration_minutes"],
+        "ferry_route_name": corridor["route_name"],
+        "ferry_departure_port": departure_port,
+        "ferry_arrival_port": arrival_port,
+    }
 
 
 def known_ferry_route_estimate(
@@ -1379,11 +1451,21 @@ def build_transport_options(
         "Flight",
     ]
 
+    # A train or bus cannot reach an island on its own, so on those
+    # corridors the land legs are measured to and from the ferry ports
+    # and the crossing is added as a separate leg further below.
+    ferry_legs = island_ferry_legs(origin, destination)
+    ferry_modes = {"Train", "Bus"} if ferry_legs else set()
+
     mode_distances = {
         mode: (
             car_route["road_distance_km"]
             if mode == "Car"
-            else distance_km
+            else (
+                ferry_legs["land_distance_km"]
+                if mode in ferry_modes
+                else distance_km
+            )
         )
         for mode in modes
     }
@@ -1416,6 +1498,42 @@ def build_transport_options(
         )
 
         carbon, source = carbon_estimates[mode]
+
+        # Add the ferry crossing on top of the land leg so the price,
+        # carbon and distance describe the whole door-to-door journey.
+        public_ferry_details_message = ""
+
+        if mode in ferry_modes:
+            ferry_carbon = (
+                ferry_legs["ferry_distance_km"]
+                * FERRY_PASSENGER_CARBON_KG_PER_KM
+            )
+            ferry_price = int(round(
+                FERRY_PASSENGER_FARE_BASE_EUR
+                + ferry_legs["ferry_distance_km"]
+                * FERRY_PASSENGER_FARE_PER_KM
+            ))
+
+            carbon = round(carbon + ferry_carbon, 1)
+            price = price + ferry_price
+            mode_distance_km = (
+                mode_distance_km
+                + ferry_legs["ferry_distance_km"]
+            )
+
+            public_ferry_details_message = (
+                "Ferry required: Yes. "
+                f"Ferry route: {ferry_legs['ferry_route_name']}. "
+                "Ferry crossing estimate: "
+                f"{ferry_legs['ferry_distance_km']:.0f} km, "
+                f"{format_drive_duration(ferry_legs['ferry_duration_minutes'])}. "
+                f"Land leg by {mode.lower()}: "
+                f"{ferry_legs['land_distance_km']:.0f} km to "
+                f"{ferry_legs['ferry_departure_port']}, continuing from "
+                f"{ferry_legs['ferry_arrival_port']}. "
+                "Foot-passenger ferry fare and emissions are prototype "
+                "estimates. "
+            )
 
         label = carbon_label(
             carbon,
@@ -1515,6 +1633,7 @@ def build_transport_options(
                 f"{source}. "
                 f"{explanation} "
                 f"{car_details_message}"
+                f"{public_ferry_details_message}"
                 f"Suitable for: {trip_type_label(trip_type)}. "
                 f"{budget_message}"
             ),
