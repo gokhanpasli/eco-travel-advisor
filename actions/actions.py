@@ -581,12 +581,35 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+# Only reached when a city cannot be placed at all. The recommendation
+# action checks coordinates first and says so rather than quietly
+# planning a trip against this number.
+UNPLACEABLE_CITY_FALLBACK_KM = 900.0
+
+
+def city_coordinates(city: str):
+    """Coordinates for a city, geocoding once if they are not cached.
+
+    CITY_COORDS is filled at runtime by the geocoder, so a restarted
+    action server can hold a city name in a slot without ever having
+    looked it up. Resolving again avoids inventing a distance.
+    """
+    coords = CITY_COORDS.get(city)
+
+    if coords:
+        return coords
+
+    resolve_city_input(city)
+
+    return CITY_COORDS.get(city)
+
+
 def haversine_distance_km(origin: str, destination: str) -> float:
-    origin_coords = CITY_COORDS.get(origin)
-    destination_coords = CITY_COORDS.get(destination)
+    origin_coords = city_coordinates(origin)
+    destination_coords = city_coordinates(destination)
 
     if not origin_coords or not destination_coords:
-        return 900.0
+        return UNPLACEABLE_CITY_FALLBACK_KM
 
     return haversine_between_coords(
         origin_coords,
@@ -878,8 +901,89 @@ def normalise_transport_mode(value):
     return text.title()
 
 
-def island_ferry_options(origin: str, destination: str):
+def usable_port_name(value):
+    """A ferry step name only helps if it reads like a place."""
+    text = str(value or "").strip()
+
+    if not text or len(text) > 40:
+        return None
+
+    lowered = text.casefold()
+
+    if any(
+        word in lowered
+        for word in ("ferry", "segment", "unknown", "crossing")
+    ):
+        return None
+
+    return text
+
+
+def routed_ferry_options(car_route):
+    """A crossing taken from the routed car journey.
+
+    OSRM reports ferry sections for any island, so this covers every
+    destination that has no curated sailings without maintaining a list
+    of islands. The ports come from a car ferry, so they are an
+    approximation for a foot passenger, but far closer than pretending
+    a land route exists.
+    """
+    if not car_route or not car_route.get("has_ferry"):
+        return []
+
+    ferry_km = safe_float(car_route.get("ferry_distance_km"), 0)
+
+    if ferry_km <= 0:
+        return []
+
+    departure_port = usable_port_name(
+        car_route.get("ferry_departure_port")
+    )
+    arrival_port = usable_port_name(
+        car_route.get("ferry_arrival_port")
+    )
+
+    return [{
+        "land_distance_km": round(
+            safe_float(car_route.get("road_distance_km"), 0),
+            1,
+        ),
+        "ferry_distance_km": round(ferry_km, 1),
+        "ferry_duration_minutes": safe_float(
+            car_route.get("ferry_duration_minutes"),
+            0,
+        ),
+        "ferry_route_name": (
+            car_route.get("ferry_route_name") or "Ferry crossing"
+        ),
+        "ferry_departure_port": departure_port or "the mainland port",
+        "ferry_arrival_port": arrival_port or "the island port",
+        # Without a usable port name the option stays a plain "Train"
+        # carrying an "includes ferry" badge.
+        "via": departure_port,
+    }]
+
+
+def island_ferry_options(
+    origin: str,
+    destination: str,
+    car_route=None,
+):
     """Every land-plus-ferry routing onto an island, cheapest land leg first.
+
+    Curated sailings win because they can compare several ports. Any
+    other island falls back to the crossing the router found.
+    """
+    curated = curated_ferry_options(origin, destination)
+
+    if curated:
+        return curated
+
+    return routed_ferry_options(car_route)
+
+
+def curated_ferry_options(origin: str, destination: str):
+    """Hand-checked sailings, which allow comparing several ports.
 
     Returns an empty list for ordinary mainland routes, so those keep
     using the plain point-to-point distance.
@@ -1685,7 +1789,7 @@ def build_transport_options(
     # A train or bus cannot reach an island on its own. Each sailing
     # that serves the island becomes its own option, so the ports can be
     # compared on price and carbon side by side.
-    ferry_options = island_ferry_options(origin, destination)
+    ferry_options = island_ferry_options(origin, destination, car_route)
 
     if ferry_declined and ferry_options:
         # The traveller ruled out the crossing, so only the modes that
@@ -1885,7 +1989,7 @@ def build_transport_options(
         # selected and looked up on its own.
         variant_mode = (
             f"{mode} via {ferry_legs['via']}"
-            if ferry_legs
+            if ferry_legs and ferry_legs.get("via")
             else mode
         )
 
@@ -3878,6 +3982,7 @@ def transport_option_buttons(
     origin: str = None,
     destination: str = None,
     ferry_declined: bool = False,
+    car_route=None,
 ):
     """One button per selectable transport option.
 
@@ -3887,7 +3992,7 @@ def transport_option_buttons(
     modes = ["Train", "Bus", "Car", "Flight"]
 
     island_route = (
-        island_ferry_options(origin, destination)
+        island_ferry_options(origin, destination, car_route)
         if origin and destination
         else []
     )
@@ -3909,7 +4014,11 @@ def transport_option_buttons(
     for mode in modes:
         if ferry_options and mode in ("Train", "Bus"):
             for ferry in ferry_options:
-                variant = f"{mode} via {ferry['via']}"
+                variant = (
+                    f"{mode} via {ferry['via']}"
+                    if ferry.get("via")
+                    else mode
+                )
                 buttons.append({
                     "title": f"Choose {variant} plan",
                     "payload": (
@@ -3975,22 +4084,60 @@ class ActionShowRecommendations(Action):
 
         # An island destination cannot be reached by land alone, so ask
         # once whether the traveller is willing to take the crossing.
+        origin_city = normalise_city(origin)
+        destination_city = normalise_city(destination)
+
+        # Without coordinates every distance below would be invented,
+        # so say so instead of planning against a placeholder.
+        unplaceable = [
+            city
+            for city in (origin_city, destination_city)
+            if not city_coordinates(city)
+        ]
+
+        if unplaceable:
+            dispatcher.utter_message(
+                text=(
+                    "I could not place "
+                    + " or ".join(unplaceable)
+                    + " on the map, so I cannot compare routes for it "
+                    "yet. Could you give a nearby larger city instead?"
+                )
+            )
+
+            return [FollowupAction("action_listen")]
+
         ferry_preference = tracker.get_slot("ferry_preference")
+
+        # One routed journey serves both the island check and the
+        # options below; the router response is cached.
+        car_route = get_car_route_estimate(
+            origin_city,
+            destination_city,
+        )
         island_route = island_ferry_options(
-            normalise_city(origin),
-            normalise_city(destination),
+            origin_city,
+            destination_city,
+            car_route,
         )
 
         if island_route and not ferry_preference:
             ports = ", ".join(
-                sailing["via"] for sailing in island_route
+                sailing["via"]
+                for sailing in island_route
+                if sailing.get("via")
+            )
+            crossing_sentence = (
+                f"Ferries sail from {ports}. "
+                if ports
+                else "The route has to cross by ferry. "
             )
 
             dispatcher.utter_message(
                 text=(
-                    f"{normalise_city(destination)} is an island, so a "
-                    "train or bus can only get you as far as the coast. "
-                    f"Ferries sail from {ports}. "
+                    f"{destination_city} cannot be reached overland, so "
+                    "a train or bus can only get you as far as the "
+                    f"coast. {crossing_sentence}"
                     "Would you like me to include ferry crossings?"
                 ),
                 buttons=[
@@ -4030,7 +4177,7 @@ class ActionShowRecommendations(Action):
             dispatcher.utter_message(
                 text=(
                     "Ferry crossings are excluded, so flying is the only "
-                    f"way left to reach {normalise_city(destination)}. "
+                    f"way left to reach {destination_city}. "
                     "For comparison, a train and ferry routing would emit "
                     "roughly a fifth of the carbon."
                 )
@@ -4074,9 +4221,10 @@ class ActionShowRecommendations(Action):
         dispatcher.utter_message(
             text=recommendations,
             buttons=transport_option_buttons(
-                normalise_city(origin),
-                normalise_city(destination),
+                origin_city,
+                destination_city,
                 ferry_declined=ferry_declined,
+                car_route=car_route,
             ) + follow_up_buttons,
         )
 

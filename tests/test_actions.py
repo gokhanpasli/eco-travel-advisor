@@ -26,6 +26,7 @@ from actions.actions import (
     generated_accommodation_options,
     normalise_transport_mode,
     transport_base_mode,
+    usable_port_name,
 )
 
 
@@ -295,6 +296,59 @@ def test_travel_time_ranks_the_modes_sensibly():
 def test_short_hops_carry_their_fixed_overhead():
     """Check-in and transfers dominate a very short flight."""
     assert estimate_travel_minutes("Flight", 0) >= 120
+
+
+ROUTED_ISLAND_JOURNEY = {
+    "has_ferry": True,
+    "road_distance_km": 2200.0,
+    "ferry_distance_km": 106.0,
+    "ferry_duration_minutes": 150,
+    "ferry_route_name": "Denia to Ibiza",
+    "ferry_departure_port": "Denia",
+    "ferry_arrival_port": "Ibiza",
+}
+
+
+def test_uncurated_island_is_detected_from_the_route():
+    """Any island works without being listed by hand."""
+    options = island_ferry_options(
+        "Berlin",
+        "Ibiza",
+        ROUTED_ISLAND_JOURNEY,
+    )
+
+    assert len(options) == 1
+    assert options[0]["ferry_distance_km"] == 106.0
+    assert options[0]["via"] == "Denia"
+
+
+def test_curated_sailings_win_over_the_routed_one():
+    """Curated data can compare ports, so it takes precedence."""
+    options = island_ferry_options(
+        "Berlin",
+        "Mallorca",
+        ROUTED_ISLAND_JOURNEY,
+    )
+
+    assert len(options) > 1
+    assert {"Barcelona", "Valencia", "Denia"} == {
+        option["via"] for option in options
+    }
+
+
+def test_a_routed_journey_without_a_ferry_stays_mainland():
+    assert island_ferry_options(
+        "Berlin",
+        "Rome",
+        {"has_ferry": False, "road_distance_km": 1500.0},
+    ) == []
+
+
+def test_generic_ferry_names_do_not_become_a_port():
+    """"Train via Vehicle ferry segment" would read as nonsense."""
+    assert usable_port_name("Vehicle ferry segment") is None
+    assert usable_port_name("") is None
+    assert usable_port_name("Denia") == "Denia"
 
 
 def test_island_route_is_symmetric():
