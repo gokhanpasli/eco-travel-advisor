@@ -3859,11 +3859,247 @@ def _transport_reselection_active():
 
 
 
+st.html("""
+<style>
+/* ── Transport cards: tighter grouping and entrance motion ───────── */
+
+/* Cards read as one stack rather than four separate blocks. */
+div[class*="st-key-transport_card_"] {
+    margin: 0 auto 12px !important;
+}
+
+.card-inner {
+    padding: 14px 18px 12px 24px;
+}
+
+.card-metrics {
+    margin-top: 12px !important;
+    border-radius: 9px;
+}
+
+.card-metric {
+    min-height: 72px;
+    padding: 12px 12px !important;
+    gap: 5px;
+}
+
+.fact-label {
+    font-size: 0.8rem !important;
+    font-weight: 800;
+}
+
+.fact-value {
+    font-size: 1.24rem !important;
+}
+
+.card-title {
+    font-size: 1.1rem !important;
+}
+
+.mode-icon {
+    font-size: 1.25rem;
+}
+
+.card-details {
+    margin-top: 10px !important;
+    padding-top: 9px;
+}
+
+.badge {
+    min-height: 28px;
+    padding: 5px 11px !important;
+    font-size: 0.8rem !important;
+}
+
+.badges {
+    gap: 7px !important;
+}
+
+/* Entrance: cards rise into place one after another. Fill mode is
+   backwards so the hover lift still works once the animation ends. */
+@keyframes card-rise {
+    from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.99);
+    }
+}
+
+/* Relative carbon bar: how this option compares with the worst one. */
+.carbon-bar {
+    height: 6px;
+    margin-top: 12px;
+    border-radius: 999px;
+    background: rgba(21, 71, 43, 0.09);
+    overflow: hidden;
+}
+
+.carbon-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    animation: bar-grow 760ms cubic-bezier(.22, .9, .3, 1) backwards;
+}
+
+@keyframes bar-grow {
+    from {
+        width: 0 !important;
+    }
+}
+
+.result-card.green .carbon-bar > span {
+    background: linear-gradient(90deg, #4ade80, #22c55e);
+}
+
+.result-card.amber .carbon-bar > span {
+    background: linear-gradient(90deg, #fbbf24, #f59e0b);
+}
+
+.result-card.red .carbon-bar > span {
+    background: linear-gradient(90deg, #f87171, #ef4444);
+}
+
+.carbon-bar-caption {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+/* The recommended option gets a soft ring and a slow shimmer. The
+   selector matches the card-wrapper rule that resets box-shadow, so it
+   needs the same reach to win. */
+div[class*="st-key-transport_card_"] .result-card.is-recommended {
+    border-color: rgba(34, 197, 94, 0.55) !important;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.30) !important;
+}
+
+.recommended-badge {
+    position: relative;
+    overflow: hidden;
+}
+
+.recommended-badge::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        115deg,
+        transparent 32%,
+        rgba(255, 255, 255, 0.65) 50%,
+        transparent 68%
+    );
+    transform: translateX(-130%);
+    animation: badge-shimmer 3.2s ease-in-out 1s infinite;
+}
+
+@keyframes badge-shimmer {
+    to {
+        transform: translateX(130%);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    div[class*="st-key-transport_card_"],
+    .carbon-bar > span,
+    .recommended-badge::after {
+        animation: none !important;
+    }
+}
+</style>
+""")
+
+
+def safe_float_ui(value):
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _claim_card_animation(message_index):
+    """True the first time this message's cards are drawn this session.
+
+    Streamlit re-runs the whole script on every interaction, so without
+    this guard the cards would replay their entrance animation on every
+    button click.
+    """
+    key = f"_animated_transport_{message_index}"
+
+    if st.session_state.get(key):
+        return False
+
+    st.session_state[key] = True
+    return True
+
+
+COUNT_UP_SCRIPT = """
+<script>
+(function () {
+    const doc = window.parent.document;
+
+    function countUp(el) {
+        const raw = el.textContent.trim();
+        const match = raw.match(/^([^\\d]*)([\\d.]+)([\\s\\S]*)$/);
+
+        if (!match) {
+            return;
+        }
+
+        const prefix = match[1];
+        const numberText = match[2];
+        const suffix = match[3];
+        const target = parseFloat(numberText);
+
+        if (!isFinite(target)) {
+            return;
+        }
+
+        const decimals = (numberText.split(".")[1] || "").length;
+        const duration = 700;
+        const started = performance.now();
+
+        function frame(now) {
+            const progress = Math.min(1, (now - started) / duration);
+            const eased = 1 - Math.pow(1 - progress, 3);
+
+            el.textContent =
+                prefix + (target * eased).toFixed(decimals) + suffix;
+
+            if (progress < 1) {
+                requestAnimationFrame(frame);
+            } else {
+                el.textContent = raw;
+            }
+        }
+
+        requestAnimationFrame(frame);
+    }
+
+    setTimeout(function () {
+        doc.querySelectorAll(
+            ".result-card .fact-value"
+        ).forEach(function (el) {
+            if (el.dataset.counted) {
+                return;
+            }
+            el.dataset.counted = "1";
+            countUp(el);
+        });
+    }, 140);
+})();
+</script>
+"""
+
+
 def _compact_transport_card(
     option,
     message_index,
     option_index,
     recommended=False,
+    max_carbon=0,
+    animate=False,
 ):
     label = option["label"]
     mode = option["mode"]
@@ -3983,11 +4219,51 @@ def _compact_transport_card(
         or _transport_reselection_active()
     ) and not selected_mode
 
+    # Relative carbon bar, measured against the worst option shown.
+    carbon_bar_html = ""
+    carbon_value = safe_float_ui(option.get("carbon"))
+
+    if max_carbon > 0 and carbon_value is not None:
+        share = max(3, min(100, round(carbon_value / max_carbon * 100)))
+        comparison = (
+            "highest of these options"
+            if share >= 99
+            else f"{share}% of the highest option"
+        )
+
+        carbon_bar_html = f"""
+        <div class="carbon-bar"
+             role="img"
+             aria-label="Carbon {comparison}">
+            <span style="width: {share}%"></span>
+        </div>
+        <div class="carbon-bar-caption">
+            <span>Carbon vs. worst option</span>
+            <span>{share}%</span>
+        </div>
+        """
+
+    # Per-card entrance delay, so the cards arrive one after another.
+    animation_css = ""
+
+    if animate:
+        animation_css = f"""
+<style>
+div.st-key-transport_card_{message_index}_{option_index} {{
+    animation: card-rise 460ms cubic-bezier(.22, .9, .3, 1) backwards;
+    animation-delay: {option_index * 80}ms;
+}}
+</style>
+"""
+
+    recommended_class = " is-recommended" if recommended else ""
+
     with st.container(
         key=f"transport_card_{message_index}_{option_index}"
     ):
         st.html(f"""
-<article class="result-card {label}"
+{animation_css}
+<article class="result-card {label}{recommended_class}"
          aria-label="{html.escape(mode_display)} travel option">
     <div class="card-inner">
         <div class="card-head">
@@ -4000,6 +4276,8 @@ def _compact_transport_card(
         </div>
 
         {metrics_html}
+
+        {carbon_bar_html}
 
         <details class="card-details">
             <summary>Calculation details</summary>
@@ -4310,13 +4588,27 @@ def render_recommendations(
 </details>
 """)
 
+        animate = _claim_card_animation(message_index)
+        max_carbon = max(
+            (
+                safe_float_ui(option.get("carbon")) or 0
+                for option in transports
+            ),
+            default=0,
+        )
+
         for index, option in enumerate(transports):
             _compact_transport_card(
                 option,
                 message_index,
                 index,
                 recommended=index == 0,
+                max_carbon=max_carbon,
+                animate=animate,
             )
+
+        if animate:
+            components.html(COUNT_UP_SCRIPT, height=0)
 
 def recommendation_transports_before(message_index):
     for previous_index in range(
@@ -4479,13 +4771,27 @@ def render_transport_selection_after_change(message_index):
         "<div class='section-title'>Choose New Transport</div>"
     )
 
+    animate = _claim_card_animation(f"reselect_{message_index}")
+    max_carbon = max(
+        (
+            safe_float_ui(option.get("carbon")) or 0
+            for option in transports
+        ),
+        default=0,
+    )
+
     for index, option in enumerate(transports):
         _compact_transport_card(
             option,
             message_index,
             index,
             recommended=index == 0,
+            max_carbon=max_carbon,
+            animate=animate,
         )
+
+    if animate:
+        components.html(COUNT_UP_SCRIPT, height=0)
 
 def render_hotel_selection_after_transport(message_index):
     hotels = recommendation_hotels_before(
