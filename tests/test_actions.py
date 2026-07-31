@@ -22,6 +22,8 @@ from actions.actions import (
     ActionSelectTransportOption,
     island_ferry_legs,
     island_ferry_options,
+    estimate_travel_minutes,
+    generated_accommodation_options,
     normalise_transport_mode,
     transport_base_mode,
 )
@@ -252,6 +254,47 @@ def test_unknown_mode_is_still_rejected():
     )
 
     assert "choose one of the transport cards" in text.lower()
+
+
+def test_ireland_needs_a_crossing_too():
+    """Dublin had the same gap Mallorca did: no land route exists."""
+    options = island_ferry_options("Berlin", "Dublin")
+
+    assert options, "Ireland is an island and needs a ferry leg"
+    assert {"Holyhead", "Liverpool", "Cherbourg"} == {
+        option["via"] for option in options
+    }
+
+
+def test_london_needs_no_crossing():
+    """The Channel Tunnel carries trains, so Britain is not cut off."""
+    assert island_ferry_options("Berlin", "London") == []
+
+
+def test_generated_stays_follow_the_city_price_level():
+    """Every uncurated city used to return the same single stay."""
+    zurich = generated_accommodation_options("Zurich")
+    istanbul = generated_accommodation_options("Istanbul")
+
+    assert len(zurich) > 1, "a city should offer more than one stay"
+    assert zurich[0]["price"] > istanbul[0]["price"], (
+        "Zurich is a more expensive city than Istanbul"
+    )
+    assert "Zurich" in zurich[0]["name"]
+
+
+def test_travel_time_ranks_the_modes_sensibly():
+    """A flight beats a train, and a train beats a bus, over distance."""
+    flight = estimate_travel_minutes("Flight", 1500)
+    train = estimate_travel_minutes("Train", 1500)
+    bus = estimate_travel_minutes("Bus", 1500)
+
+    assert flight < train < bus
+
+
+def test_short_hops_carry_their_fixed_overhead():
+    """Check-in and transfers dominate a very short flight."""
+    assert estimate_travel_minutes("Flight", 0) >= 120
 
 
 def test_island_route_is_symmetric():

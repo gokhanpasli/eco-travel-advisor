@@ -33,6 +33,10 @@ OSRM_ROUTE_CACHE = {}
 DEFAULT_CAR_FUEL_L_PER_100_KM = 6.5
 DEFAULT_FUEL_PRICE_EUR_PER_L = 1.80
 
+# The trip form always asks for a return date and the hotel is priced
+# for the whole stay, so transport fares and emissions cover both legs.
+ROUND_TRIP_LEGS = 2
+
 # Foot-passenger ferry assumptions, used when a train or bus route has
 # to cross to an island. A train or bus cannot reach an island on its
 # own, so the crossing is modelled as a separate leg.
@@ -79,9 +83,45 @@ _MALLORCA_SAILINGS = [
     },
 ]
 
+_IRELAND_SAILINGS = [
+    {
+        "mainland_port": "Holyhead Ferry Port",
+        "mainland_port_coords": (53.3090, -4.6320),
+        "island_port": "Dublin Ferry Port",
+        "island_port_coords": (53.3478, -6.2000),
+        "ferry_distance_km": 110.0,
+        "ferry_duration_minutes": 195,
+        "route_name": "Holyhead to Dublin",
+        "via": "Holyhead",
+    },
+    {
+        "mainland_port": "Liverpool Ferry Port",
+        "mainland_port_coords": (53.4084, -3.0000),
+        "island_port": "Dublin Ferry Port",
+        "island_port_coords": (53.3478, -6.2000),
+        "ferry_distance_km": 220.0,
+        "ferry_duration_minutes": 480,
+        "route_name": "Liverpool to Dublin",
+        "via": "Liverpool",
+    },
+    {
+        "mainland_port": "Cherbourg Ferry Port",
+        "mainland_port_coords": (49.6470, -1.6220),
+        "island_port": "Dublin Ferry Port",
+        "island_port_coords": (53.3478, -6.2000),
+        "ferry_distance_km": 570.0,
+        "ferry_duration_minutes": 1080,
+        "route_name": "Cherbourg to Dublin",
+        "via": "Cherbourg",
+    },
+]
+
+# Islands reachable only by sea. Great Britain is deliberately absent:
+# the Channel Tunnel carries trains, so London needs no crossing.
 ISLAND_FERRY_ROUTES = {
     "mallorca": _MALLORCA_SAILINGS,
     "palma de mallorca": _MALLORCA_SAILINGS,
+    "dublin": _IRELAND_SAILINGS,
 }
 
 # The car route model only follows one corridor, so it uses the first
@@ -1149,6 +1189,33 @@ def get_car_route_estimate(
     return result
 
 
+# Door-to-door travel time is modelled from distance, since no free
+# timetable API covers these operators. Each mode has a typical
+# operating speed plus fixed overhead for stations, check-in and
+# transfers. These are estimates, not published departures.
+MODE_TRAVEL_TIME_MODEL = {
+    "Train": {"speed_kmh": 110.0, "fixed_minutes": 45},
+    "Bus": {"speed_kmh": 70.0, "fixed_minutes": 30},
+    "Flight": {"speed_kmh": 750.0, "fixed_minutes": 150},
+    "Car": {"speed_kmh": 90.0, "fixed_minutes": 0},
+}
+
+
+def estimate_travel_minutes(mode: str, distance_km: float) -> float:
+    """Rough door-to-door travel time for one leg, in minutes."""
+    model = MODE_TRAVEL_TIME_MODEL.get(
+        mode,
+        MODE_TRAVEL_TIME_MODEL["Train"],
+    )
+
+    return (
+        max(safe_float(distance_km, 0), 0)
+        / model["speed_kmh"]
+        * 60.0
+        + model["fixed_minutes"]
+    )
+
+
 def carbon_label(carbon_kg: float, distance_km: float) -> str:
     carbon_intensity = carbon_kg / max(distance_km, 1.0)
 
@@ -1468,14 +1535,94 @@ def scoring_weights(sustainability_level: str) -> Dict[str, float]:
     }
 
 
+# Nightly cost level relative to a European average of 1.0. Used to
+# price the generated fallback stays so every city outside the curated
+# dataset does not return the same figure.
+CITY_PRICE_INDEX = {
+    "Zurich": 1.75,
+    "Oslo": 1.55,
+    "London": 1.50,
+    "Copenhagen": 1.45,
+    "Paris": 1.40,
+    "Amsterdam": 1.35,
+    "Dublin": 1.35,
+    "Stockholm": 1.30,
+    "Helsinki": 1.25,
+    "München": 1.25,
+    "Milan": 1.20,
+    "Mallorca": 1.20,
+    "Palma de Mallorca": 1.20,
+    "Barcelona": 1.15,
+    "Rome": 1.15,
+    "Vienna": 1.15,
+    "Brussels": 1.15,
+    "Berlin": 1.10,
+    "Madrid": 1.10,
+    "Köln": 1.10,
+    "Lisbon": 1.00,
+    "Athens": 0.90,
+    "Prague": 0.85,
+    "Budapest": 0.80,
+    "Warsaw": 0.80,
+    "Çeşme": 0.80,
+    "Istanbul": 0.70,
+    "İzmir": 0.65,
+    "Ankara": 0.60,
+}
+
+GENERIC_ECO_STAYS = [
+    {
+        "suffix": "Eco Hostel",
+        "base_price": 62,
+        "features": (
+            "shared low-energy rooms, refill stations, "
+            "walkable central location"
+        ),
+    },
+    {
+        "suffix": "Green Guesthouse",
+        "base_price": 88,
+        "features": (
+            "renewable electricity, local breakfast sourcing, "
+            "linen reuse programme"
+        ),
+    },
+    {
+        "suffix": "Sustainable City Hotel",
+        "base_price": 124,
+        "features": (
+            "certified green building, waste reduction policy, "
+            "public transport access"
+        ),
+    },
+]
+
+
+def generated_accommodation_options(destination: str):
+    """City-aware stand-ins for destinations outside the curated set."""
+    price_index = CITY_PRICE_INDEX.get(destination, 1.0)
+
+    return [
+        {
+            "name": f"{destination} {stay['suffix']}",
+            "price": int(round(stay["base_price"] * price_index)),
+            "features": stay["features"],
+            "source": (
+                "prototype eco-stay model, priced from a city cost index"
+            ),
+        }
+        for stay in GENERIC_ECO_STAYS
+    ]
+
+
 def get_accommodation_options(
     destination: str,
     budget: Any,
     nights: int,
 ) -> List[Dict[str, Any]]:
-    options = HOTEL_DATABASE.get(
-        destination,
-        HOTEL_DATABASE["default"],
+    options = (
+        HOTEL_DATABASE.get(destination)
+        or generated_accommodation_options(destination)
     )
 
     budget_value = safe_float(
@@ -1630,10 +1777,34 @@ def build_transport_options(
                 "estimates. "
             )
 
+        # Carbon intensity decides the colour and is identical for one
+        # leg or two, so classify before doubling.
         label = carbon_label(
             carbon,
             mode_distance_km,
         )
+
+        # Distance stays one-way because it describes the route itself.
+        price = price * ROUND_TRIP_LEGS
+        carbon = round(carbon * ROUND_TRIP_LEGS, 1)
+
+        # One-way door-to-door time. The car uses its live routed
+        # duration; everything else is modelled from distance.
+        if mode == "Car":
+            travel_minutes = safe_float(
+                car_route.get("total_duration_minutes"),
+                0,
+            ) or estimate_travel_minutes(mode, mode_distance_km)
+        else:
+            land_km = (
+                ferry_legs["land_distance_km"]
+                if ferry_legs
+                else mode_distance_km
+            )
+            travel_minutes = estimate_travel_minutes(mode, land_km)
+
+            if ferry_legs:
+                travel_minutes += ferry_legs["ferry_duration_minutes"]
 
         estimated_trip_total = price + accommodation_total
 
@@ -1728,6 +1899,8 @@ def build_transport_options(
             "estimated_trip_total": round(estimated_trip_total, 2),
             "over_budget": estimated_trip_total > budget_value,
             "distance_km": round(mode_distance_km, 1),
+            "travel_minutes": round(travel_minutes),
+            "travel_time_display": format_drive_duration(travel_minutes),
             "ferry": dict(ferry_legs) if ferry_legs else None,
             "car_route": (
                 dict(car_route)
@@ -1737,6 +1910,8 @@ def build_transport_options(
             "source": (
                 f"{source}. "
                 f"{explanation} "
+                "Fare and emissions cover the outbound and return "
+                "legs. "
                 f"{car_details_message}"
                 f"{public_ferry_details_message}"
                 f"Suitable for: {trip_type_label(trip_type)}. "
@@ -1932,6 +2107,7 @@ def format_recommendations(
             f"Carbon: {option['carbon']} kg CO2e | "
             f"Label: {option['label']} | "
             f"Score: {option['score']} | "
+            f"Duration: {option['travel_time_display']} | "
             f"Source: {option['source']}"
         )
 

@@ -2876,6 +2876,7 @@ def parse_transport_line(line):
         r"Carbon:\s*([0-9.]+)\s*kg CO2e\s*\|\s*"
         r"Label:\s*(green|amber|red)\s*\|\s*"
         r"Score:\s*([0-9.]+)\s*\|\s*"
+        r"(?:Duration:\s*(.*?)\s*\|\s*)?"
         r"Source:\s*(.*)$"
     )
 
@@ -2894,7 +2895,8 @@ def parse_transport_line(line):
         "carbon": match.group(3).strip(),
         "label": match.group(4).lower().strip(),
         "score": match.group(5).strip(),
-        "source": match.group(6).strip(),
+        "duration": (match.group(6) or "").strip(),
+        "source": match.group(7).strip(),
     }
 
 
@@ -4314,7 +4316,7 @@ def _compact_transport_card(
         metrics_html = f"""
 <div class="card-metrics car-card-metrics">
     <div class="card-metric">
-        <div class="fact-label">Fuel cost</div>
+        <div class="fact-label">Return fuel</div>
         <div class="fact-value">
             &euro;{html.escape(str(option['price']))}
         </div>
@@ -4326,13 +4328,13 @@ def _compact_transport_card(
     </div>
 
     <div class="card-metric">
-        <div class="fact-label">Drive time</div>
+        <div class="fact-label">One way</div>
         <div class="fact-value">{html.escape(drive_time)}</div>
     </div>
 
     <div class="card-metric"
-         title="Estimated carbon dioxide equivalent">
-        <div class="fact-label">CO2e</div>
+         title="Estimated carbon dioxide equivalent, return trip">
+        <div class="fact-label">CO2e return</div>
         <div class="fact-value">
             {html.escape(str(option['carbon']))} kg
         </div>
@@ -4341,17 +4343,26 @@ def _compact_transport_card(
 """
     else:
         metrics_html = f"""
-<div class="card-metrics">
-    <div class="card-metric">
-        <div class="fact-label">Transport price</div>
+<div class="card-metrics car-card-metrics">
+    <div class="card-metric"
+         title="Outbound and return legs together">
+        <div class="fact-label">Return trip</div>
         <div class="fact-value">
             &euro;{html.escape(str(option['price']))}
         </div>
     </div>
 
     <div class="card-metric"
-         title="Estimated carbon dioxide equivalent">
-        <div class="fact-label">CO2e</div>
+         title="Estimated door-to-door time, one way">
+        <div class="fact-label">One way</div>
+        <div class="fact-value">
+            {html.escape(option.get('duration') or 'See details')}
+        </div>
+    </div>
+
+    <div class="card-metric"
+         title="Estimated carbon dioxide equivalent, return trip">
+        <div class="fact-label">CO2e return</div>
         <div class="fact-value">
             {html.escape(str(option['carbon']))} kg
         </div>
