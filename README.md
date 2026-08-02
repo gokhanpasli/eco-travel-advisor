@@ -41,7 +41,7 @@ The NLU pipeline uses spaCy embeddings (`en_core_web_md`) with DIET for intent c
 
 ### Option 1: Google Colab (no local setup)
 
-Click the Colab badge above, add your API keys to Colab Secrets, and run the cells top to bottom. The notebook clones this repository, trains the model and serves the UI through a public ngrok link. Setup and training take roughly 10 to 15 minutes.
+Click the Colab badge above, add your API keys to Colab Secrets, and run the cells top to bottom. No GitHub authentication is needed. The notebook clones this repository, trains the model and serves the UI through a public ngrok link. Setup and training take roughly 10 to 15 minutes.
 
 ### Option 2: Docker
 
