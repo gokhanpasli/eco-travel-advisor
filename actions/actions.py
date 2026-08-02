@@ -766,6 +766,29 @@ def request_osrm_route(
             if ferry_names
             else "Vehicle ferry segment"
         )
+
+        ferry_crossings = []
+
+        for step in ferry_steps:
+            step_name = str(step.get("name", "")).strip()
+            step_km = float(step.get("distance", 0)) / 1000.0
+            step_minutes = float(step.get("duration", 0)) / 60.0
+
+            if (
+                ferry_crossings
+                and ferry_crossings[-1]["name"] == step_name
+            ):
+                ferry_crossings[-1]["distance_km"] += step_km
+                ferry_crossings[-1]["duration_minutes"] += step_minutes
+            else:
+                from_port, to_port = split_ferry_route_name(step_name)
+                ferry_crossings.append({
+                    "name": step_name or "Ferry crossing",
+                    "from_port": from_port,
+                    "to_port": to_port,
+                    "distance_km": step_km,
+                    "duration_minutes": step_minutes,
+                })
         ferry_departure_port, ferry_arrival_port = (
             split_ferry_route_name(ferry_names[0])
             if ferry_names
@@ -785,6 +808,7 @@ def request_osrm_route(
             ),
             "ferry_distance_km": ferry_distance_km,
             "ferry_duration_minutes": ferry_duration_minutes,
+            "ferry_crossings": ferry_crossings,
             "has_ferry": bool(ferry_steps),
             "ferry_route_name": ferry_route_name,
             "ferry_departure_port": ferry_departure_port,
@@ -943,6 +967,18 @@ def routed_ferry_options(car_route):
         car_route.get("ferry_arrival_port")
     )
 
+    crossings = [
+        {
+            "name": crossing.get("name") or "Ferry crossing",
+            "from_port": usable_port_name(crossing.get("from_port")),
+            "to_port": usable_port_name(crossing.get("to_port")),
+            "distance_km": round(crossing.get("distance_km", 0), 1),
+            "duration_minutes": crossing.get("duration_minutes", 0),
+        }
+        for crossing in (car_route.get("ferry_crossings") or [])
+        if crossing.get("distance_km", 0) > 0
+    ]
+
     return [{
         "land_distance_km": round(
             safe_float(car_route.get("road_distance_km"), 0),
@@ -958,9 +994,10 @@ def routed_ferry_options(car_route):
         ),
         "ferry_departure_port": departure_port or "the mainland port",
         "ferry_arrival_port": arrival_port or "the island port",
+        "crossings": crossings,
         # Without a usable port name the option stays a plain "Train"
         # carrying an "includes ferry" badge.
-        "via": departure_port,
+        "via": departure_port if len(crossings) <= 1 else None,
     }]
 
 
@@ -975,30 +1012,160 @@ def island_ferry_options(
     other island falls back to the crossing the router found.
     """
     curated = curated_ferry_options(origin, destination)
+    routed = routed_ferry_options(car_route)
 
-    if curated:
-        return curated
+    if not curated:
+        return routed
 
-    return routed_ferry_options(car_route)
+    # The router sees the whole journey. Any routed crossing that does
+    # not belong to a curated corridor is one the table does not know
+    # about — Dublin to Ibiza only has its Irish end curated, so the
+    # Denia sailing would silently vanish. Merge such crossings into
+    # every curated option. Short remnants under 60 km are skipped:
+    # they are Channel-style hops a train replaces with a tunnel.
+    known_tokens = _curated_port_tokens(origin, destination)
+    extras = [
+        crossing
+        for crossing in (routed[0].get("crossings") if routed else [])
+        if not any(
+            token in str(crossing.get("name", "")).casefold()
+            for token in known_tokens
+        )
+    ]
+    extra_km = sum(c.get("distance_km", 0) for c in extras)
+
+    if extra_km > 60:
+        curated = [
+            _with_extra_crossings(option, extras)
+            for option in curated
+        ]
+
+    return curated
+
+
+def _curated_port_tokens(origin, destination):
+    """Lower-case port and city words of every curated corridor here."""
+    tokens = set()
+
+    for key in (
+        str(origin).strip().casefold(),
+        str(destination).strip().casefold(),
+    ):
+        tokens.add(key)
+
+        for sailing in ISLAND_FERRY_ROUTES.get(key, []):
+            for field in ("mainland_port", "island_port", "via"):
+                for word in str(sailing.get(field, "")).split():
+                    cleaned = word.strip("()").casefold()
+                    if len(cleaned) > 3 and cleaned not in (
+                        "ferry",
+                        "port",
+                    ):
+                        tokens.add(cleaned)
+
+    return tokens
+
+
+def _with_extra_crossings(option, extras):
+    """A curated option extended with crossings the router found."""
+    merged = dict(option)
+    extra_crossings = [
+        {
+            "name": crossing.get("name") or "Ferry crossing",
+            "from_port": crossing.get("from_port"),
+            "to_port": crossing.get("to_port"),
+            "distance_km": round(crossing.get("distance_km", 0), 1),
+            "duration_minutes": crossing.get("duration_minutes", 0),
+            "via": usable_port_name(crossing.get("from_port")),
+        }
+        for crossing in extras
+    ]
+
+    merged["crossings"] = (
+        list(option.get("crossings") or []) + extra_crossings
+    )
+    merged["ferry_distance_km"] = round(
+        option["ferry_distance_km"]
+        + sum(c["distance_km"] for c in extra_crossings),
+        1,
+    )
+    merged["ferry_duration_minutes"] = (
+        option["ferry_duration_minutes"]
+        + sum(c["duration_minutes"] for c in extra_crossings)
+    )
+    merged["ferry_route_name"] = " + ".join(
+        c["name"] for c in merged["crossings"]
+    )
+    merged["ferry_arrival_port"] = (
+        merged["crossings"][-1].get("to_port")
+        or option["ferry_arrival_port"]
+    )
+    merged["via"] = " & ".join(
+        c["via"] for c in merged["crossings"] if c.get("via")
+    ) or None
+
+    return merged
+
+
+def _crossing_from_sailing(sailing, leaving_island):
+    """One crossing of a curated sailing, in the direction travelled."""
+    if leaving_island:
+        from_port = sailing["island_port"]
+        to_port = sailing["mainland_port"]
+    else:
+        from_port = sailing["mainland_port"]
+        to_port = sailing["island_port"]
+
+    return {
+        "name": sailing["route_name"],
+        "from_port": from_port,
+        "to_port": to_port,
+        "distance_km": sailing["ferry_distance_km"],
+        "duration_minutes": sailing["ferry_duration_minutes"],
+        "via": sailing["via"],
+    }
+
+
+def _combined_option(land_distance_km, crossings):
+    """Aggregate a list of crossings into one selectable option."""
+    return {
+        "land_distance_km": round(land_distance_km, 1),
+        "ferry_distance_km": round(
+            sum(c["distance_km"] for c in crossings),
+            1,
+        ),
+        "ferry_duration_minutes": sum(
+            c["duration_minutes"] for c in crossings
+        ),
+        "ferry_route_name": " + ".join(
+            c["name"] for c in crossings
+        ),
+        "ferry_departure_port": crossings[0]["from_port"],
+        "ferry_arrival_port": crossings[-1]["to_port"],
+        "crossings": crossings,
+        "via": " & ".join(
+            c["via"] for c in crossings if c.get("via")
+        ) or None,
+    }
 
 
 def curated_ferry_options(origin: str, destination: str):
     """Hand-checked sailings, which allow comparing several ports.
 
-    Returns an empty list for ordinary mainland routes, so those keep
-    using the plain point-to-point distance.
+    Handles an island at either end or at both, as a journey such as
+    Dublin to Mallorca needs one crossing to leave Ireland and another
+    to reach the Balearics. Returns an empty list for ordinary
+    mainland routes.
     """
     origin_key = str(origin).strip().casefold()
     destination_key = str(destination).strip().casefold()
-    origin_sailings = ISLAND_FERRY_ROUTES.get(origin_key)
-    destination_sailings = ISLAND_FERRY_ROUTES.get(destination_key)
+    origin_sailings = ISLAND_FERRY_ROUTES.get(origin_key) or []
+    destination_sailings = (
+        ISLAND_FERRY_ROUTES.get(destination_key) or []
+    )
 
-    # Only one end of the journey may be an island for this model.
-    if bool(origin_sailings) == bool(destination_sailings):
+    if not origin_sailings and not destination_sailings:
         return []
-
-    travelling_to_island = bool(destination_sailings)
-    sailings = destination_sailings or origin_sailings
 
     origin_coords = CITY_COORDS.get(origin)
     destination_coords = CITY_COORDS.get(destination)
@@ -1008,49 +1175,81 @@ def curated_ferry_options(origin: str, destination: str):
 
     options = []
 
-    for sailing in sailings:
-        if travelling_to_island:
-            land_from, land_to = (
-                origin_coords,
-                sailing["mainland_port_coords"],
-            )
-            island_from, island_to = (
-                sailing["island_port_coords"],
-                destination_coords,
-            )
-            departure_port = sailing["mainland_port"]
-            arrival_port = sailing["island_port"]
-        else:
-            land_from, land_to = (
-                sailing["mainland_port_coords"],
-                destination_coords,
-            )
-            island_from, island_to = (
-                origin_coords,
-                sailing["island_port_coords"],
-            )
-            departure_port = sailing["island_port"]
-            arrival_port = sailing["mainland_port"]
+    if origin_sailings and destination_sailings:
+        # Island to island: pair every way off the origin island with
+        # every way onto the destination island, keep the shortest.
+        for leave in origin_sailings:
+            for arrive in destination_sailings:
+                land_distance_km = (
+                    haversine_between_coords(
+                        origin_coords,
+                        leave["island_port_coords"],
+                    )
+                    + haversine_between_coords(
+                        leave["mainland_port_coords"],
+                        arrive["mainland_port_coords"],
+                    )
+                    + haversine_between_coords(
+                        arrive["island_port_coords"],
+                        destination_coords,
+                    )
+                )
 
-        land_distance_km = (
-            haversine_between_coords(land_from, land_to)
-            + haversine_between_coords(island_from, island_to)
-        )
+                options.append(_combined_option(
+                    land_distance_km,
+                    [
+                        _crossing_from_sailing(leave, True),
+                        _crossing_from_sailing(arrive, False),
+                    ],
+                ))
 
-        options.append({
-            "land_distance_km": round(land_distance_km, 1),
-            "ferry_distance_km": sailing["ferry_distance_km"],
-            "ferry_duration_minutes": sailing["ferry_duration_minutes"],
-            "ferry_route_name": sailing["route_name"],
-            "ferry_departure_port": departure_port,
-            "ferry_arrival_port": arrival_port,
-            "via": sailing["via"],
-        })
+    else:
+        travelling_to_island = bool(destination_sailings)
+        sailings = destination_sailings or origin_sailings
 
+        for sailing in sailings:
+            if travelling_to_island:
+                land_distance_km = (
+                    haversine_between_coords(
+                        origin_coords,
+                        sailing["mainland_port_coords"],
+                    )
+                    + haversine_between_coords(
+                        sailing["island_port_coords"],
+                        destination_coords,
+                    )
+                )
+            else:
+                land_distance_km = (
+                    haversine_between_coords(
+                        origin_coords,
+                        sailing["island_port_coords"],
+                    )
+                    + haversine_between_coords(
+                        sailing["mainland_port_coords"],
+                        destination_coords,
+                    )
+                )
+
+            options.append(_combined_option(
+                land_distance_km,
+                [_crossing_from_sailing(
+                    sailing,
+                    leaving_island=not travelling_to_island,
+                )],
+            ))
+
+    # Three cards per mode is plenty; island-to-island pairs would
+    # otherwise multiply into nine. Rank by rough journey time so a
+    # short drive onto an overnight sailing does not beat a longer
+    # land leg with a quick crossing.
     return sorted(
         options,
-        key=lambda option: option["land_distance_km"],
-    )
+        key=lambda option: (
+            option["land_distance_km"] / 90.0 * 60.0
+            + option["ferry_duration_minutes"]
+        ),
+    )[:3]
 
 
 def island_ferry_legs(origin: str, destination: str):
@@ -1168,15 +1367,19 @@ def get_car_route_estimate(
     if cache_key in OSRM_ROUTE_CACHE:
         return dict(OSRM_ROUTE_CACHE[cache_key])
 
-    route_data = known_ferry_route_estimate(
-        origin,
-        destination,
+    # The live router comes first: it sees every crossing on the
+    # journey, including ones the curated corridors do not know, such
+    # as the second ferry on Dublin to Ibiza. The corridor table is
+    # the offline fallback it was originally built to be.
+    route_data = request_osrm_route(
+        CITY_COORDS.get(origin),
+        CITY_COORDS.get(destination),
     )
 
     if not route_data:
-        route_data = request_osrm_route(
-            CITY_COORDS.get(origin),
-            CITY_COORDS.get(destination),
+        route_data = known_ferry_route_estimate(
+            origin,
+            destination,
         )
 
     if route_data:
@@ -1199,6 +1402,7 @@ def get_car_route_estimate(
         )
         live_route = route_data.get("live_route", True)
         has_ferry = route_data.get("has_ferry", False)
+        ferry_crossings = route_data.get("ferry_crossings") or []
         ferry_route_name = route_data.get(
             "ferry_route_name",
             "",
@@ -1228,6 +1432,7 @@ def get_car_route_estimate(
         )
         live_route = False
         has_ferry = False
+        ferry_crossings = []
         ferry_route_name = ""
         ferry_departure_port = ""
         ferry_arrival_port = ""
@@ -1264,6 +1469,7 @@ def get_car_route_estimate(
         "route_source": route_source,
         "live_route": live_route,
         "has_ferry": has_ferry,
+        "ferry_crossings": ferry_crossings,
         "ferry_route_name": ferry_route_name,
         "ferry_departure_port": ferry_departure_port,
         "ferry_arrival_port": ferry_arrival_port,
@@ -4378,6 +4584,31 @@ def selected_ferry_text(selected_option):
     if not ferry:
         return ""
 
+    crossings = ferry.get("crossings") or []
+
+    if len(crossings) > 1:
+        crossing_lines = "".join(
+            f"Ferry {index}: {crossing['name']}, "
+            f"{crossing['distance_km']:.0f} km, "
+            f"{format_drive_duration(crossing['duration_minutes'])}\n"
+            for index, crossing in enumerate(crossings, start=1)
+        )
+
+        return (
+            "Ferry required: Yes "
+            f"({len(crossings)} crossings)\n"
+            f"{crossing_lines}"
+            f"Land legs: {ferry['land_distance_km']:.0f} km in total\n"
+            "Ferry fares and emissions are prototype estimates\n"
+        )
+
+    via_line = (
+        f"Land leg: {ferry['land_distance_km']:.0f} km via "
+        f"{ferry['via']}\n"
+        if ferry.get("via")
+        else f"Land leg: {ferry['land_distance_km']:.0f} km\n"
+    )
+
     return (
         "Ferry required: Yes\n"
         "Ferry route: "
@@ -4386,8 +4617,7 @@ def selected_ferry_text(selected_option):
         "Ferry crossing: "
         f"{ferry['ferry_distance_km']:.0f} km, "
         f"{format_drive_duration(ferry['ferry_duration_minutes'])}\n"
-        f"Land leg: {ferry['land_distance_km']:.0f} km via "
-        f"{ferry['via']}\n"
+        f"{via_line}"
         "Ferry fare and emissions are prototype estimates\n"
     )
 

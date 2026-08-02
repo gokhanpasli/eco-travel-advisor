@@ -2699,27 +2699,64 @@ def clean_port_name(value):
 def build_journey_chain(origin, destination, mode, ferry_route=""):
     """Berlin -> train -> Barcelona -> ferry -> Mallorca.
 
-    Falls back to a single leg when the route needs no crossing.
+    Handles a crossing at either end ("Train via Holyhead") and at
+    both ("Train via Holyhead & Barcelona", drawn as ferry, land,
+    ferry). Falls back to a single leg when no crossing is needed.
     """
-    base_mode, _, via_port = str(mode or "").partition(" via ")
+    base_mode, _, via_text = str(mode or "").partition(" via ")
     base_mode = base_mode.strip()
-    via_port = clean_port_name(via_port)
+
+    ports = [
+        clean_port_name(part)
+        for part in via_text.split("&")
+        if clean_port_name(part)
+    ]
 
     # The car route names its ports in a separate field instead.
-    if not via_port and ferry_route:
+    if not ports and ferry_route:
         match = re.match(
             r"\s*(.+?)\s+to\s+(.+)",
             str(ferry_route),
         )
         if match:
-            via_port = clean_port_name(match.group(1))
+            ports = [clean_port_name(match.group(1))]
+
+    mode_icon = transport_icon(base_mode)
+    ferry_icon = "&#9972;"
 
     stops = [(city_flag(origin), origin)]
-    legs = [transport_icon(base_mode)]
 
-    if via_port:
-        stops.append(("&#9875;", via_port))
-        legs.append("&#9972;")
+    if len(ports) >= 2:
+        # Off the origin island by ferry, overland between the ports,
+        # then a second ferry onto the destination island.
+        legs = [ferry_icon]
+        stops.append(("&#9875;", ports[0]))
+        for extra_port in ports[1:]:
+            legs.append(mode_icon)
+            stops.append(("&#9875;", extra_port))
+        legs.append(ferry_icon)
+
+    elif len(ports) == 1:
+        # Which side of the port the ferry sits on follows from the
+        # crossing direction: a ferry arriving at the via port means
+        # the journey starts on an island.
+        leaving_island = False
+        match = re.match(
+            r"\s*(.+?)\s+to\s+(.+)",
+            str(ferry_route),
+        )
+        if match and clean_port_name(match.group(2)) == ports[0]:
+            leaving_island = True
+
+        stops.append(("&#9875;", ports[0]))
+        legs = (
+            [ferry_icon, mode_icon]
+            if leaving_island
+            else [mode_icon, ferry_icon]
+        )
+
+    else:
+        legs = [mode_icon]
 
     stops.append((city_flag(destination), destination))
 
@@ -2740,10 +2777,12 @@ def build_journey_chain(origin, destination, mode, ferry_route=""):
             "</span>"
         )
 
+    via_label = " & ".join(ports)
+
     return (
         "<div class='journey-chain' role='img' aria-label='"
         f"{html.escape(str(origin))} to {html.escape(str(destination))}"
-        f"{' via ' + html.escape(via_port) if via_port else ''}'>"
+        f"{' via ' + html.escape(via_label) if via_label else ''}'>"
         + "".join(parts)
         + "</div>"
     )

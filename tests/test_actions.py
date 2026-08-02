@@ -202,12 +202,20 @@ def test_island_offers_every_sailing_port():
     )
 
 
-def test_ferry_ports_are_ordered_by_land_distance():
-    """The shortest land leg is offered first."""
+def test_ferry_ports_are_ordered_by_journey_time():
+    """A short drive onto an overnight sailing must not outrank a
+    longer land leg with a quick crossing."""
     options = island_ferry_options("Berlin", "Mallorca")
-    distances = [option["land_distance_km"] for option in options]
 
-    assert distances == sorted(distances)
+    def rough_minutes(option):
+        return (
+            option["land_distance_km"] / 90.0 * 60.0
+            + option["ferry_duration_minutes"]
+        )
+
+    times = [rough_minutes(option) for option in options]
+
+    assert times == sorted(times)
 
 
 def test_mainland_route_offers_no_sailings():
@@ -349,6 +357,61 @@ def test_generic_ferry_names_do_not_become_a_port():
     assert usable_port_name("Vehicle ferry segment") is None
     assert usable_port_name("") is None
     assert usable_port_name("Denia") == "Denia"
+
+
+def test_island_to_island_needs_two_crossings():
+    """Dublin to Mallorca must leave Ireland and reach the Balearics."""
+    options = island_ferry_options("Dublin", "Mallorca")
+
+    assert options, "two curated islands should still combine"
+
+    best = options[0]
+    crossings = best.get("crossings") or []
+
+    assert len(crossings) == 2
+    assert "Dublin" in crossings[0]["from_port"]
+    assert "Palma" in crossings[-1]["to_port"]
+    assert best["ferry_distance_km"] == pytest.approx(
+        sum(c["distance_km"] for c in crossings)
+    )
+    assert "&" in best["via"]
+
+
+TWO_FERRY_ROUTED_JOURNEY = {
+    "has_ferry": True,
+    "road_distance_km": 2100.0,
+    "ferry_distance_km": 356.0,
+    "ferry_duration_minutes": 800,
+    "ferry_route_name": "Dublin - Holyhead / Denia - Sant Antoni",
+    "ferry_departure_port": "Dublin",
+    "ferry_arrival_port": "Holyhead",
+    "ferry_crossings": [
+        {"name": "Dublin - Holyhead", "from_port": "Dublin",
+         "to_port": "Holyhead", "distance_km": 110.0,
+         "duration_minutes": 195},
+        {"name": "Denia - Sant Antoni de Portmany", "from_port": "Denia",
+         "to_port": "Sant Antoni de Portmany", "distance_km": 106.0,
+         "duration_minutes": 150},
+    ],
+}
+
+
+def test_routed_extra_crossing_is_merged_into_curated():
+    """Dublin to Ibiza: only the Irish end is curated, so the Denia
+    sailing the router found must not be dropped."""
+    options = island_ferry_options(
+        "Dublin",
+        "Ibiza",
+        TWO_FERRY_ROUTED_JOURNEY,
+    )
+
+    assert options
+    best = options[0]
+    names = " ".join(c["name"] for c in best["crossings"])
+
+    assert len(best["crossings"]) == 2
+    assert "Denia" in names
+    assert best["ferry_distance_km"] > 200
 
 
 def test_island_route_is_symmetric():
