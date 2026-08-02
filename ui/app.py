@@ -345,6 +345,16 @@ body,
     font-size: 0.88rem;
 }
 
+.journey-stop-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.journey-stop.transfer .journey-flag {
+    font-size: 0.95rem;
+}
+
 .journey-stop-caption {
     color: var(--muted);
     font-size: 0.58rem;
@@ -2810,7 +2820,11 @@ def build_journey_chain(origin, destination, mode, ferry_route=""):
         if is_transfer:
             return (
                 "<span class='journey-stop transfer'>"
+                "<span class='journey-stop-main'>"
+                "<span class='journey-flag' aria-hidden='true'>"
+                f"{city_flag(city)}</span>"
                 f"<span class='journey-city'>{html.escape(str(city))}</span>"
+                "</span>"
                 "<span class='journey-stop-caption'>port</span>"
                 "</span>"
             )
@@ -5532,6 +5546,32 @@ def city_flag(city):
         "majorca": "🇪🇸",
         "palma": "🇪🇸",
         "palma de mallorca": "🇪🇸",
+        "valencia": "🇪🇸",
+        "denia": "🇪🇸",
+        "dénia": "🇪🇸",
+        "gandia": "🇪🇸",
+        "ibiza": "🇪🇸",
+        "eivissa": "🇪🇸",
+        "sant antoni de portmany": "🇪🇸",
+        "holyhead": "🇬🇧",
+        "liverpool": "🇬🇧",
+        "portsmouth": "🇬🇧",
+        "dover": "🇬🇧",
+        "cherbourg": "🇫🇷",
+        "cherbourg-en-cotentin": "🇫🇷",
+        "calais": "🇫🇷",
+        "nice": "🇫🇷",
+        "bastia": "🇫🇷",
+        "ajaccio": "🇫🇷",
+        "bonifacio": "🇫🇷",
+        "messina": "🇮🇹",
+        "villa san giovanni": "🇮🇹",
+        "palermo": "🇮🇹",
+        "cagliari": "🇮🇹",
+        "santa teresa di gallura": "🇮🇹",
+        "heraklion": "🇬🇷",
+        "kissamos": "🇬🇷",
+        "hook of holland": "🇳🇱",
     }
 
     return flags.get(city_key, "📍")
