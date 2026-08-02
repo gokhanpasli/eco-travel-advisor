@@ -5923,14 +5923,16 @@ def render_confirmed_plan(text):
         "Over budget"
         if plan["over_budget"]
         else (
+            # Only the car excludes its vehicle ferry fare; train and
+            # bus prices already include the foot-passenger crossing.
             "Before ferry fare"
-            if has_ferry
+            if has_ferry and is_car
             else "Within budget"
         )
     )
     total_label = (
         "Estimated subtotal"
-        if has_ferry
+        if has_ferry and is_car
         else "Estimated total"
     )
 
@@ -6270,14 +6272,16 @@ def render_plan_review(text):
         "Over budget"
         if plan["over_budget"]
         else (
+            # Only the car excludes its vehicle ferry fare; train and
+            # bus prices already include the foot-passenger crossing.
             "Before ferry fare"
-            if has_ferry
+            if has_ferry and is_car
             else "Within budget"
         )
     )
     total_label = (
         "Estimated subtotal"
-        if has_ferry
+        if has_ferry and is_car
         else "Estimated total"
     )
 
