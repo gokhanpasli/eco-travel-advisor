@@ -414,6 +414,35 @@ def test_routed_extra_crossing_is_merged_into_curated():
     assert best["ferry_distance_km"] > 200
 
 
+def test_routed_extra_lands_on_the_correct_end():
+    """Ibiza to Dublin sails from Ibiza first: the routed crossing
+    belongs at the start of the journey, not appended to the end."""
+    import actions.actions as actions_module
+
+    # The merge path needs coordinates for both ends; the test runs
+    # offline, so Ibiza cannot rely on runtime geocoding.
+    actions_module.CITY_COORDS.setdefault(
+        "Ibiza",
+        (38.9067, 1.4206),
+    )
+
+    options = island_ferry_options(
+        "Ibiza",
+        "Dublin",
+        TWO_FERRY_ROUTED_JOURNEY,
+    )
+
+    assert options
+    crossings = options[0]["crossings"]
+
+    assert "Denia" in crossings[0]["name"], (
+        "the uncurated origin crossing should come first"
+    )
+    assert "Dublin" in str(crossings[-1]["to_port"]), (
+        "the curated crossing onto Ireland should come last"
+    )
+
+
 def test_island_route_is_symmetric():
     """Leaving the island needs the same crossing as arriving."""
     outbound = island_ferry_legs("Berlin", "Mallorca")

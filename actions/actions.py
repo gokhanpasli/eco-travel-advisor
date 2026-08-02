@@ -1035,8 +1035,20 @@ def island_ferry_options(
     extra_km = sum(c.get("distance_km", 0) for c in extras)
 
     if extra_km > 60:
+        # The extra crossings sit on whichever end the curated table
+        # does not cover. When that end is the origin, they happen
+        # before the curated crossing, and the order matters for the
+        # journey chain: Ibiza to Dublin sails from Ibiza first.
+        origin_is_curated = (
+            str(origin).strip().casefold() in ISLAND_FERRY_ROUTES
+        )
+
         curated = [
-            _with_extra_crossings(option, extras)
+            _with_extra_crossings(
+                option,
+                extras,
+                prepend=not origin_is_curated,
+            )
             for option in curated
         ]
 
@@ -1066,7 +1078,7 @@ def _curated_port_tokens(origin, destination):
     return tokens
 
 
-def _with_extra_crossings(option, extras):
+def _with_extra_crossings(option, extras, prepend=False):
     """A curated option extended with crossings the router found."""
     merged = dict(option)
     extra_crossings = [
@@ -1081,8 +1093,11 @@ def _with_extra_crossings(option, extras):
         for crossing in extras
     ]
 
+    curated_crossings = list(option.get("crossings") or [])
     merged["crossings"] = (
-        list(option.get("crossings") or []) + extra_crossings
+        extra_crossings + curated_crossings
+        if prepend
+        else curated_crossings + extra_crossings
     )
     merged["ferry_distance_km"] = round(
         option["ferry_distance_km"]
@@ -1095,6 +1110,10 @@ def _with_extra_crossings(option, extras):
     )
     merged["ferry_route_name"] = " + ".join(
         c["name"] for c in merged["crossings"]
+    )
+    merged["ferry_departure_port"] = (
+        merged["crossings"][0].get("from_port")
+        or option["ferry_departure_port"]
     )
     merged["ferry_arrival_port"] = (
         merged["crossings"][-1].get("to_port")
