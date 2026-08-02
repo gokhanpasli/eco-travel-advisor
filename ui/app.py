@@ -305,23 +305,53 @@ body,
     grid-column: 1 / -1;
 }
 
-/* Journey chain: origin, each leg's vehicle, and any transfer port. */
+/* Journey chain: cities as pills, each leg labelled with its vehicle
+   and pointing at the next stop, transfer ports set apart. */
 .journey-chain {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px 2px;
+    row-gap: 8px;
     margin: 4px 0 10px;
+}
+
+.journey-hop {
+    display: inline-flex;
+    align-items: center;
 }
 
 .journey-stop {
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    padding: 7px 12px;
-    border: 1px solid var(--border);
+    padding: 7px 13px;
+    border: 1px solid var(--border-strong);
     border-radius: 999px;
     background: var(--surface);
+    box-shadow: 0 2px 6px rgba(31, 63, 45, 0.06);
+}
+
+.journey-stop.transfer {
+    flex-direction: column;
+    gap: 0;
+    padding: 4px 12px 5px;
+    border-style: dashed;
+    background: rgba(21, 71, 43, 0.03);
+    box-shadow: none;
+}
+
+.journey-stop.transfer .journey-city {
+    font-weight: 750;
+    font-size: 0.88rem;
+}
+
+.journey-stop-caption {
+    color: var(--muted);
+    font-size: 0.58rem;
+    font-weight: 850;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    line-height: 1.2;
 }
 
 .journey-flag {
@@ -339,36 +369,49 @@ body,
 .journey-leg {
     display: inline-flex;
     align-items: center;
-    min-width: 46px;
-    padding: 0 4px;
+    padding: 0 3px;
 }
 
-.journey-leg::before,
-.journey-leg::after {
+.journey-leg::before {
     content: "";
-    flex: 1;
+    width: 12px;
     height: 2px;
     border-radius: 2px;
     background: repeating-linear-gradient(
         90deg,
-        rgba(22, 163, 74, 0.55) 0 5px,
-        transparent 5px 9px
+        rgba(22, 163, 74, 0.5) 0 4px,
+        transparent 4px 8px
     );
 }
 
-.journey-leg-icon {
-    padding: 0 4px;
-    font-size: 1.05rem;
+/* Arrowhead pointing at the stop this leg arrives at. */
+.journey-leg::after {
+    content: "▸";
+    padding: 0 3px 0 1px;
+    color: rgba(22, 163, 74, 0.75);
+    font-size: 0.8rem;
     line-height: 1;
 }
 
-@media (max-width: 600px) {
-    .journey-leg {
-        min-width: 34px;
-    }
+.journey-leg-label {
+    margin-left: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--brand-soft);
+    color: #14532d;
+    font-size: 0.76rem;
+    font-weight: 800;
+    white-space: nowrap;
+    line-height: 1.4;
+}
 
+@media (max-width: 600px) {
     .journey-city {
         font-size: 0.88rem;
+    }
+
+    .journey-leg-label {
+        font-size: 0.7rem;
     }
 }
 
@@ -2721,20 +2764,23 @@ def build_journey_chain(origin, destination, mode, ferry_route=""):
         if match:
             ports = [clean_port_name(match.group(1))]
 
-    mode_icon = transport_icon(base_mode)
-    ferry_icon = "&#9972;"
+    mode_leg = (
+        f"{transport_icon(base_mode)} {html.escape(base_mode)}"
+    )
+    ferry_leg = "&#9972; Ferry"
 
-    stops = [(city_flag(origin), origin)]
+    # Each stop: (label, is_transfer_port). Each leg: labelled text.
+    stops = [(origin, False)]
 
     if len(ports) >= 2:
         # Off the origin island by ferry, overland between the ports,
         # then a second ferry onto the destination island.
-        legs = [ferry_icon]
-        stops.append(("&#9875;", ports[0]))
+        legs = [ferry_leg]
+        stops.append((ports[0], True))
         for extra_port in ports[1:]:
-            legs.append(mode_icon)
-            stops.append(("&#9875;", extra_port))
-        legs.append(ferry_icon)
+            legs.append(mode_leg)
+            stops.append((extra_port, True))
+        legs.append(ferry_leg)
 
     elif len(ports) == 1:
         # Which side of the port the ferry sits on follows from the
@@ -2748,33 +2794,47 @@ def build_journey_chain(origin, destination, mode, ferry_route=""):
         if match and clean_port_name(match.group(2)) == ports[0]:
             leaving_island = True
 
-        stops.append(("&#9875;", ports[0]))
+        stops.append((ports[0], True))
         legs = (
-            [ferry_icon, mode_icon]
+            [ferry_leg, mode_leg]
             if leaving_island
-            else [mode_icon, ferry_icon]
+            else [mode_leg, ferry_leg]
         )
 
     else:
-        legs = [mode_icon]
+        legs = [mode_leg]
 
-    stops.append((city_flag(destination), destination))
+    stops.append((destination, False))
 
-    parts = []
-
-    for index, (flag, city) in enumerate(stops):
-        if index:
-            parts.append(
-                "<span class='journey-leg' aria-hidden='true'>"
-                f"<span class='journey-leg-icon'>{legs[index - 1]}</span>"
+    def stop_html(city, is_transfer):
+        if is_transfer:
+            return (
+                "<span class='journey-stop transfer'>"
+                f"<span class='journey-city'>{html.escape(str(city))}</span>"
+                "<span class='journey-stop-caption'>port</span>"
                 "</span>"
             )
 
-        parts.append(
+        return (
             "<span class='journey-stop'>"
-            f"<span class='journey-flag' aria-hidden='true'>{flag}</span>"
+            "<span class='journey-flag' aria-hidden='true'>"
+            f"{city_flag(city)}</span>"
             f"<span class='journey-city'>{html.escape(str(city))}</span>"
             "</span>"
+        )
+
+    parts = [stop_html(*stops[0])]
+
+    # Leg and following stop wrap as one unit, so a narrow screen
+    # breaks into readable "Ferry -> Holyhead" lines.
+    for index in range(1, len(stops)):
+        parts.append(
+            "<span class='journey-hop'>"
+            "<span class='journey-leg'>"
+            f"<span class='journey-leg-label'>{legs[index - 1]}</span>"
+            "</span>"
+            + stop_html(*stops[index])
+            + "</span>"
         )
 
     via_label = " & ".join(ports)
