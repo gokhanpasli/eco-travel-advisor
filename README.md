@@ -9,8 +9,7 @@ Built with Rasa 3.6 for dialogue management, a Streamlit front end with user acc
 ![Rasa](https://img.shields.io/badge/rasa-3.6-purple)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-<!-- Add a screenshot or short GIF of the Streamlit UI here. A 10 second GIF of a full conversation is the single best thing you can show. -->
-<!-- ![Demo](docs/assets/demo.gif) -->
+![Demo: planning a Dublin trip with a ferry crossing, from route to confirmed itinerary](docs/assets/demo.gif)
 
 ## What it does
 
